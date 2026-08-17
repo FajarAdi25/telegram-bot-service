@@ -1,0 +1,29 @@
+{
+  "name": "monitoring-telegram-bot",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Telegram Bot Service adapter for Monitoring Service incident alerts",
+  "type": "module",
+  "scripts": {
+    "dev": "nodemon --watch src --ext ts --exec \"tsx src/app.ts\"",
+    "start": "node dist/src/app.js",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --import tsx --test test/*.test.ts",
+    "db:migrate": "tsx src/database/migrate.ts",
+    "db:migrate:prod": "node dist/src/database/migrate.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "mysql2": "^3.23.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "nodemon": "^3.1.9",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

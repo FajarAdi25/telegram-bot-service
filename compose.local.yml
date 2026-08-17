@@ -1,0 +1,37 @@
+services:
+  telegram-bot-service:
+    image: telegram-bot-service:latest
+    container_name: telegram-bot-service
+
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${APP_HOST_PORT:-3004}:${APP_PORT:-3004}"
+    environment:
+      PORT: ${APP_PORT:-3004}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID}
+      TELEGRAM_TOPIC_NOMAD_ID: ${TELEGRAM_TOPIC_NOMAD_ID}
+      TELEGRAM_TOPIC_CONSUL_ID: ${TELEGRAM_TOPIC_CONSUL_ID}
+      TELEGRAM_TOPIC_MINIO_ID: ${TELEGRAM_TOPIC_MINIO_ID}
+      MONITORING_SERVICE_BASE_URL: ${MONITORING_SERVICE_BASE_URL}
+      MONITORING_AUTH_USERNAME: ${MONITORING_AUTH_USERNAME}
+      MONITORING_AUTH_PASSWORD: ${MONITORING_AUTH_PASSWORD}
+      MYSQL_HOST: ${MYSQL_HOST}
+      MYSQL_PORT: ${MYSQL_PORT:-3306}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_CONNECTION_LIMIT: ${MYSQL_CONNECTION_LIMIT:-10}
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "require('node:http').get('http://127.0.0.1:' + (process.env.PORT || '3004') + '/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
