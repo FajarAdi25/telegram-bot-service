@@ -4,4 +4,3 @@ dist/
 .DS_Store
 .env.docker.local
 .env.docker.dev
-x-docs/
