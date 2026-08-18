@@ -5,4 +5,3 @@ dist/
 .env.docker.local
 .env.docker.dev
 x-docs/
-VERSION
