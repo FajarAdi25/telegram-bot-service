@@ -2,12 +2,12 @@
 
 ## Release
 
-Current stable service version: **v1.1.0**.
+Current stable service version: **v1.1.1**.
 
 Docker image:
 
 ```text
-monitoring-telegram-bot:1.1.0
+monitoring-telegram-bot:1.1.1
 ```
 
 Version history is maintained in `CHANGELOG.md`. Versioning rules are documented in `docs/VERSIONING.md`.
@@ -16,7 +16,7 @@ Telegram Bot Service menerima incident notification dari Monitoring Service, men
 
 Baseline contract: **Telegram Bot Service Integration API v1.0**.
 
-## v1.1.0 transport architecture
+## v1.1.1 transport architecture
 
 Telegram incoming update tidak lagi memakai public webhook.
 
@@ -43,7 +43,7 @@ Implikasi:
 - `POST /webhooks/telegram` dihapus;
 - Bot menjalankan Telegram `getUpdates` long polling;
 - Bot memproses `callback_query` untuk ACK/POSTPONE;
-- Bot memproses `message` untuk reply manual POSTPONE;
+- Bot memproses `message` untuk input ACK note serta POSTPONE time/remark;
 - public domain, HTTPS ingress, Nginx, dan Telegram `setWebhook` tidak diperlukan;
 - container harus memiliki outbound HTTPS access ke `api.telegram.org`;
 - satu bot token hanya boleh dipakai oleh satu polling instance aktif.
@@ -64,8 +64,11 @@ Service ini menangani:
 - Basic Auth untuk request Telegram Bot Service -> Monitoring Service;
 - persistent webhook deduplication menggunakan MySQL;
 - persistent ACK state untuk menentukan button pada notification berikutnya;
-- persistent pending POSTPONE prompt;
-- input POSTPONE absolut dengan format `DD-MM-YYYY HH:mm` pada timezone `Asia/Jakarta`.
+- persistent Telegram action input session;
+- manual ACK note;
+- input POSTPONE absolut dengan format `DD-MM-YYYY HH:mm` pada timezone `Asia/Jakarta`;
+- manual POSTPONE remark;
+- persistent success confirmation message untuk ACK dan POSTPONE.
 
 Service ini tidak melakukan recovery/resolve incident. Monitoring Service tetap menjadi source of truth.
 
@@ -99,7 +102,7 @@ src/
 │       └── ...
 ├── repositories/
 │   ├── incident-state.repository.ts
-│   ├── postpone-session.repository.ts
+│   ├── telegram-action-session.repository.ts
 │   └── webhook-delivery.repository.ts
 └── shared/
 ```
@@ -109,7 +112,7 @@ src/
 Copy `.env.example` menjadi `.env`.
 
 ```env
-APP_VERSION=1.1.0
+APP_VERSION=1.1.1
 PORT=3001
 
 TELEGRAM_BOT_TOKEN=
@@ -149,13 +152,15 @@ npm install
 npm run db:migrate
 ```
 
-Migration membuat tiga table:
+Migration utama membuat table:
 
 ```text
 webhook_deliveries
 incident_states
-postpone_sessions
+telegram_action_sessions
 ```
+
+Database yang pernah menjalankan versi lama dapat masih memiliki `postpone_sessions`. Table tersebut tidak digunakan oleh flow v1.1.1.
 
 ### webhook_deliveries
 
@@ -183,9 +188,9 @@ setelah ACK berhasil
 
 ACK tidak menghentikan reminder.
 
-### postpone_sessions
+### telegram_action_sessions
 
-Menyimpan pending prompt POSTPONE. Session dipetakan ke Telegram user, chat, topic, dan prompt message sehingga reply user dapat dikaitkan kembali ke incident.
+Menyimpan pending input ACK dan POSTPONE secara persistent. Session menyimpan action/stage, incident, Telegram user, chat, topic, source message, prompt message, dan nilai waktu POSTPONE saat flow sudah masuk tahap remark.
 
 ## Running Locally
 
@@ -198,7 +203,7 @@ npm run dev
 Saat startup, log normal mencakup:
 
 ```text
-Monitoring Telegram Bot v1.1.0 listening on port 3001
+Monitoring Telegram Bot v1.1.1 listening on port 3001
 Telegram long polling started
 ```
 
@@ -215,7 +220,7 @@ Expected:
   "status": "ok",
   "database": "up",
   "telegramPolling": "up",
-  "version": "1.1.0"
+  "version": "1.1.1"
 }
 ```
 
@@ -303,7 +308,7 @@ Update type yang diproses:
 
 ```text
 callback_query -> ACK / POSTPONE button
-message        -> manual POSTPONE reply
+message        -> ACK note / POSTPONE time / POSTPONE remark
 ```
 
 Polling menggunakan server-side timeout 25 detik dan retry setelah error transport.
@@ -312,7 +317,7 @@ Saat shutdown container, active polling request dibatalkan terlebih dahulu sebel
 
 ### Migration from webhook mode
 
-v1.1.0 otomatis memanggil `deleteWebhook` saat polling start. Pending update tidak sengaja dibuang.
+v1.1.1 otomatis memanggil `deleteWebhook` saat polling start. Pending update tidak sengaja dibuang.
 
 Untuk deployment yang ingin membuang update lama secara eksplisit, lakukan sekali sebelum start:
 
@@ -320,7 +325,7 @@ Untuk deployment yang ingin membuang update lama secara eksplisit, lakukan sekal
 curl "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/deleteWebhook?drop_pending_updates=true"
 ```
 
-Jangan menjalankan `setWebhook` untuk v1.1.0.
+Jangan menjalankan `setWebhook` untuk v1.1.1.
 
 ### Single instance requirement
 
@@ -332,21 +337,27 @@ Jalankan **satu replica** polling untuk satu `TELEGRAM_BOT_TOKEN`. Jangan menjal
 User klik Acknowledge
         |
         v
-Telegram API
+Bot meminta ACK note (Force Reply)
         |
-        | getUpdates / callback_query
+        v
+User reply note
+        |
+        | ketik '-' untuk tanpa note
         v
 Telegram Bot
         |
-        | Basic Auth + body.user
+        | Basic Auth + body.user + note
         v
 POST /api/v1/incidents/:incidentId/acknowledge
         |
         v
-Monitoring Service
+Monitoring Service success
+        |
+        +-> ACK button dihapus
+        +-> Bot mengirim message "ACK berhasil"
 ```
 
-Identity user berasal dari `callback_query.from`.
+Identity user berasal dari Telegram user yang melakukan action. ACK button baru dihapus setelah Monitoring Service mengembalikan success.
 
 ## POSTPONE Flow
 
@@ -354,28 +365,32 @@ Identity user berasal dari `callback_query.from`.
 User klik Postpone
         |
         v
-long polling menerima callback_query
+Bot meminta waktu (Force Reply)
         |
         v
-Bot mengirim Force Reply prompt
-        |
-        v
-User reply: 17-08-2026 13:30
-        |
-        v
-long polling menerima message
+User reply: DD-MM-YYYY HH:mm
         |
         v
 Bot parse sebagai Asia/Jakarta
         |
         v
-2026-08-17T13:30:00+07:00
+Bot meminta remark (Force Reply)
         |
         v
+User reply remark
+        |
+        | ketik '-' untuk tanpa remark
+        v
 POST /api/v1/incidents/:incidentId/postpone
+        |
+        v
+Monitoring Service success
+        |
+        +-> tombol Postpone tetap tersedia
+        +-> Bot mengirim message "POSTPONE berhasil"
 ```
 
-Format input wajib:
+Format waktu wajib:
 
 ```text
 DD-MM-YYYY HH:mm
@@ -405,7 +420,7 @@ npm run build
 ## Production Notes
 
 - outbound HTTPS ke `api.telegram.org` wajib tersedia;
-- public inbound HTTPS tidak diperlukan untuk Telegram karena v1.1.0 memakai polling;
+- public inbound HTTPS tidak diperlukan untuk Telegram karena v1.1.1 memakai polling;
 - jalankan hanya satu polling instance untuk satu bot token;
 - simpan Bot Token dan Basic Auth credentials sebagai secret;
 - jalankan migration sebelum application start;

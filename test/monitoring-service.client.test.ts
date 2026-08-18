@@ -26,7 +26,7 @@ function client() {
   });
 }
 
-test('ACK uses Basic Auth and body.user', async () => {
+test('ACK uses Basic Auth, body.user and optional note', async () => {
   const restore = mockFetch(async (input, init) => {
     assert.equal(
       String(input),
@@ -34,7 +34,7 @@ test('ACK uses Basic Auth and body.user', async () => {
     );
     const headers = init?.headers as Record<string, string>;
     assert.equal(headers.authorization, `Basic ${Buffer.from('telegram-bot:secret').toString('base64')}`);
-    assert.deepEqual(JSON.parse(String(init?.body)), { user });
+    assert.deepEqual(JSON.parse(String(init?.body)), { user, note: 'Investigating' });
 
     return Response.json({
       success: true,
@@ -43,14 +43,14 @@ test('ACK uses Basic Auth and body.user', async () => {
   });
 
   try {
-    const result = await client().acknowledgeIncident('INC-001', user);
+    const result = await client().acknowledgeIncident('INC-001', user, 'Investigating');
     assert.equal(result.acknowledged, true);
   } finally {
     restore();
   }
 });
 
-test('POSTPONE uses expected endpoint, user and postponeUntil', async () => {
+test('POSTPONE uses expected endpoint, user, postponeUntil and optional remark', async () => {
   const restore = mockFetch(async (input, init) => {
     assert.equal(
       String(input),
@@ -59,6 +59,7 @@ test('POSTPONE uses expected endpoint, user and postponeUntil', async () => {
     assert.deepEqual(JSON.parse(String(init?.body)), {
       user,
       postponeUntil: '2026-08-17T13:30:00+07:00',
+      remark: 'Maintenance',
     });
 
     return Response.json({
@@ -77,6 +78,7 @@ test('POSTPONE uses expected endpoint, user and postponeUntil', async () => {
       'INC-001',
       user,
       '2026-08-17T13:30:00+07:00',
+      'Maintenance',
     );
     assert.equal(result.postponed, true);
   } finally {

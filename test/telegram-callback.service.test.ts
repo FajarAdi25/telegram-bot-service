@@ -2,40 +2,29 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { TelegramCallbackService } from '../src/modules/telegram/telegram-callback.service.js';
 
-test('ACK forwards Telegram user identity and removes ACK button', async () => {
-  let ackRequest: any;
-  let marked: any;
-  let edited: any;
+test('ACK asks for note with Force Reply and persists ACK_NOTE session', async () => {
+  let promptInput: any;
+  let saved: any;
+  let deleted: any;
   let answered: any;
 
-  const monitoring = {
-    async acknowledgeIncident(incidentId: string, user: unknown) {
-      ackRequest = { incidentId, user };
-      return { id: incidentId, status: 'OPEN', acknowledged: true };
+  const sessions = {
+    async deleteForUserIncidentAction(userId: string, incidentId: string, action: string) {
+      deleted = { userId, incidentId, action };
     },
+    async save(value: unknown) { saved = value; },
   };
-  const incidentState = {
-    async markAcknowledged(incidentId: string, user: unknown) {
-      marked = { incidentId, user };
-    },
-  };
-  const sessions = { async save() {} };
   const telegram = {
-    async editMessageButtons(chatId: string, messageId: number, buttons: unknown) {
-      edited = { chatId, messageId, buttons };
+    async sendMessage(input: unknown) {
+      promptInput = input;
+      return { message_id: 55 };
     },
     async answerCallbackQuery(id: string, text: string) {
       answered = { id, text };
     },
-    async sendMessage() { return { message_id: 999 }; },
   };
 
-  const service = new TelegramCallbackService(
-    monitoring as never,
-    incidentState as never,
-    sessions as never,
-    telegram as never,
-  );
+  const service = new TelegramCallbackService(sessions as never, telegram as never);
 
   await service.handle({
     update_id: 1,
@@ -56,47 +45,43 @@ test('ACK forwards Telegram user identity and removes ACK button', async () => {
     },
   });
 
-  assert.deepEqual(ackRequest, {
+  assert.equal(promptInput.forceReply, true);
+  assert.match(promptInput.text, /Masukkan note ACK/);
+  assert.deepEqual(deleted, {
+    userId: '5405675168',
     incidentId: 'INC-001',
-    user: {
-      id: '5405675168',
-      name: 'Fajar Adipras',
-      username: 'fajaradipras',
-    },
+    action: 'ACK',
   });
-  assert.deepEqual(marked, ackRequest);
-  assert.deepEqual(edited, {
+  assert.deepEqual(saved, {
+    userId: '5405675168',
+    incidentId: 'INC-001',
+    action: 'ACK',
+    stage: 'ACK_NOTE',
     chatId: '-1004474327429',
-    messageId: 10,
-    buttons: [{ text: 'Postpone', callback_data: 'postpone:INC-001' }],
+    topicId: 2,
+    sourceMessageId: 10,
+    promptMessageId: 55,
   });
-  assert.deepEqual(answered, { id: 'cb-1', text: 'Incident acknowledged' });
+  assert.deepEqual(answered, { id: 'cb-1', text: 'Masukkan note ACK' });
 });
 
-test('POSTPONE creates a Force Reply session in the same topic', async () => {
+test('POSTPONE first asks for absolute time and persists POSTPONE_TIME session', async () => {
   let promptInput: any;
   let saved: any;
 
-  const monitoring = { async acknowledgeIncident() { throw new Error('not used'); } };
-  const incidentState = { async markAcknowledged() {} };
   const sessions = {
+    async deleteForUserIncidentAction() {},
     async save(value: unknown) { saved = value; },
   };
   const telegram = {
     async sendMessage(input: unknown) {
       promptInput = input;
-      return { message_id: 55 };
+      return { message_id: 56 };
     },
     async answerCallbackQuery() {},
-    async editMessageButtons() {},
   };
 
-  const service = new TelegramCallbackService(
-    monitoring as never,
-    incidentState as never,
-    sessions as never,
-    telegram as never,
-  );
+  const service = new TelegramCallbackService(sessions as never, telegram as never);
 
   await service.handle({
     update_id: 2,
@@ -113,12 +98,15 @@ test('POSTPONE creates a Force Reply session in the same topic', async () => {
   });
 
   assert.equal(promptInput.forceReply, true);
-  assert.equal(promptInput.topicId, 4);
+  assert.match(promptInput.text, /DD-MM-YYYY HH:mm/);
   assert.deepEqual(saved, {
     userId: '123',
     incidentId: 'INC-002',
+    action: 'POSTPONE',
+    stage: 'POSTPONE_TIME',
     chatId: '-1004474327429',
     topicId: 4,
-    promptMessageId: 55,
+    sourceMessageId: 20,
+    promptMessageId: 56,
   });
 });

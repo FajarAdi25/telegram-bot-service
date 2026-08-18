@@ -1,4 +1,4 @@
-# Docker Deployment Guide - Monitoring Telegram Bot v1.1.0
+# Docker Deployment Guide - Monitoring Telegram Bot v1.1.1
 
 **Runtime:** Node.js 20 + TypeScript  
 **Telegram incoming mode:** Long polling  
@@ -7,7 +7,7 @@
 
 ## 1. Architecture
 
-v1.1.0 tidak membutuhkan Telegram webhook publik.
+v1.1.1 tidak membutuhkan Telegram webhook publik.
 
 ```text
 Monitoring Service container
@@ -42,13 +42,13 @@ POST /webhooks/telegram
 Set deployment env:
 
 ```env
-APP_VERSION=1.1.0
+APP_VERSION=1.1.1
 ```
 
 Docker image:
 
 ```text
-monitoring-telegram-bot:1.1.0
+monitoring-telegram-bot:1.1.1
 ```
 
 Gunakan exact version tag saat deployment.
@@ -77,8 +77,10 @@ Migration membuat:
 ```text
 webhook_deliveries
 incident_states
-postpone_sessions
+telegram_action_sessions
 ```
+
+Database upgrade dari versi lama dapat masih memiliki `postpone_sessions`; v1.1.1 tidak menggunakannya.
 
 ## 4. Container startup
 
@@ -104,7 +106,7 @@ Application kemudian:
 Log normal:
 
 ```text
-Monitoring Telegram Bot v1.1.0 listening on port 3004
+Monitoring Telegram Bot v1.1.1 listening on port 3004
 Telegram long polling started
 ```
 
@@ -120,7 +122,7 @@ notepad .env.docker.local
 Important values:
 
 ```env
-APP_VERSION=1.1.0
+APP_VERSION=1.1.1
 APP_HOST_PORT=3004
 APP_PORT=3004
 
@@ -173,7 +175,7 @@ Expected:
   "status": "ok",
   "database": "up",
   "telegramPolling": "up",
-  "version": "1.1.0"
+  "version": "1.1.1"
 }
 ```
 
@@ -276,15 +278,15 @@ The Compose files therefore define one service instance and no replica scaling.
 
 ## 9. Migrating from v1.0.0 webhook mode
 
-v1.1.0 calls `deleteWebhook` at startup. It does not intentionally drop pending Telegram updates.
+v1.1.1 calls `deleteWebhook` at startup. It does not intentionally drop pending Telegram updates.
 
-If you specifically want a clean cut and want to discard stale queued Telegram updates, run this once before deploying v1.1.0:
+If you specifically want a clean cut and want to discard stale queued Telegram updates, run this once before deploying v1.1.1:
 
 ```bash
 curl "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/deleteWebhook?drop_pending_updates=true"
 ```
 
-Then deploy v1.1.0.
+Then deploy v1.1.1.
 
 Verify webhook is empty if needed:
 
@@ -302,7 +304,7 @@ Expected relevant field:
 }
 ```
 
-Do not call `setWebhook` while v1.1.0 is using long polling.
+Do not call `setWebhook` while v1.1.1 is using long polling.
 
 ## 10. End-to-end test
 
@@ -346,32 +348,39 @@ Expected flow:
 
 ```text
 Telegram user
--> Telegram API
 -> Bot getUpdates callback_query
+-> Bot Force Reply: ACK note
+-> user reply note (atau '-')
+-> Bot getUpdates message
 -> Monitoring Service /acknowledge
--> button ACK removed
+-> button ACK removed after success
+-> confirmation message sent
 ```
 
 No inbound request from Telegram to port 3004 is involved.
 
 ### 10.4 POSTPONE
 
-Click `Postpone`, then reply to the Force Reply prompt:
+Click `Postpone`. Bot first asks for absolute time:
 
 ```text
 18-08-2026 15:30
 ```
+
+After the time is valid, Bot asks for `remark`. Reply `-` if no remark is required.
 
 Expected flow:
 
 ```text
 Telegram user
 -> getUpdates callback_query
--> Bot sends prompt
--> user reply
--> getUpdates message
+-> Bot asks time
+-> user replies time
 -> Bot parses Asia/Jakarta
+-> Bot asks remark
+-> user replies remark (or '-')
 -> Monitoring Service /postpone
+-> confirmation message sent
 ```
 
 ## 11. MySQL networking note on Linux

@@ -20,6 +20,13 @@ interface AcknowledgeResponse {
     id: string;
     status: 'OPEN' | 'RESOLVED';
     acknowledged: boolean;
+    acknowledgedAt?: string;
+    acknowledgedBy?: {
+      id: string | number;
+      name: string;
+      username?: string;
+    };
+    acknowledgementNote?: string | null;
   };
 }
 
@@ -29,7 +36,15 @@ interface PostponeResponse {
     id: string;
     status: 'OPEN';
     postponed: boolean;
+    postponedAt?: string;
+    postponedBy?: {
+      id: string | number;
+      name: string;
+      username?: string;
+    };
     postponeUntil: string;
+    postponeRemark?: string | null;
+    nextNotificationAt?: string;
   };
 }
 
@@ -56,10 +71,14 @@ export class MonitoringServiceClient {
   async acknowledgeIncident(
     incidentId: string,
     user: TelegramUserIdentity,
+    note?: string,
   ): Promise<AcknowledgeResponse['data']> {
     const response = await this.post<AcknowledgeResponse>(
       `/api/v1/incidents/${encodeURIComponent(incidentId)}/acknowledge`,
-      { user },
+      {
+        user,
+        ...(note ? { note } : {}),
+      },
     );
     return response.data;
   }
@@ -68,10 +87,15 @@ export class MonitoringServiceClient {
     incidentId: string,
     user: TelegramUserIdentity,
     postponeUntil: string,
+    remark?: string,
   ): Promise<PostponeResponse['data']> {
     const response = await this.post<PostponeResponse>(
       `/api/v1/incidents/${encodeURIComponent(incidentId)}/postpone`,
-      { user, postponeUntil },
+      {
+        user,
+        postponeUntil,
+        ...(remark ? { remark } : {}),
+      },
     );
     return response.data;
   }

@@ -2,8 +2,8 @@ import type { Pool } from 'mysql2/promise';
 import { MonitoringServiceClient } from '../../clients/monitoring-service.client.js';
 import type { AppConfig } from '../../config/config.js';
 import { IncidentStateRepository } from '../../repositories/incident-state.repository.js';
-import { PostponeSessionRepository } from '../../repositories/postpone-session.repository.js';
-import { PostponeInputService } from '../postpone/postpone-input.service.js';
+import { TelegramActionSessionRepository } from '../../repositories/telegram-action-session.repository.js';
+import { TelegramActionInputService } from './telegram-action-input.service.js';
 import { TelegramCallbackService } from './telegram-callback.service.js';
 import { TelegramClient } from './telegram.client.js';
 import { TelegramPollingService } from './telegram-polling.service.js';
@@ -15,7 +15,7 @@ export function createTelegramModule(config: AppConfig, pool: Pool) {
   const topicRouter = new TelegramTopicRouter(config.telegram.topics);
   const monitoringServiceClient = new MonitoringServiceClient(config.monitoringService);
   const incidentStateRepository = new IncidentStateRepository(pool);
-  const postponeSessionRepository = new PostponeSessionRepository(pool);
+  const actionSessionRepository = new TelegramActionSessionRepository(pool);
 
   const service = new TelegramService(
     telegramClient,
@@ -25,28 +25,27 @@ export function createTelegramModule(config: AppConfig, pool: Pool) {
   );
 
   const callbackService = new TelegramCallbackService(
-    monitoringServiceClient,
-    incidentStateRepository,
-    postponeSessionRepository,
+    actionSessionRepository,
     telegramClient,
   );
 
-  const postponeInputService = new PostponeInputService(
+  const actionInputService = new TelegramActionInputService(
     monitoringServiceClient,
-    postponeSessionRepository,
+    incidentStateRepository,
+    actionSessionRepository,
     telegramClient,
   );
 
   const pollingService = new TelegramPollingService(
     telegramClient,
     callbackService,
-    postponeInputService,
+    actionInputService,
   );
 
   return {
     service,
     callbackService,
-    postponeInputService,
+    actionInputService,
     pollingService,
   };
 }

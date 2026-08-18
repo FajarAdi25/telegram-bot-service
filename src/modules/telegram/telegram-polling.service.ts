@@ -1,5 +1,5 @@
 import { setTimeout as sleep } from 'node:timers/promises';
-import type { PostponeInputService } from '../postpone/postpone-input.service.js';
+import type { TelegramActionInputService } from './telegram-action-input.service.js';
 import type { TelegramCallbackService } from './telegram-callback.service.js';
 import type { TelegramClient } from './telegram.client.js';
 import type { TelegramUpdate } from './telegram.types.js';
@@ -16,14 +16,12 @@ export class TelegramPollingService {
   constructor(
     private readonly telegramClient: Pick<TelegramClient, 'deleteWebhook' | 'getUpdates'>,
     private readonly callbackService: Pick<TelegramCallbackService, 'handle'>,
-    private readonly postponeInputService: Pick<PostponeInputService, 'handle'>,
+    private readonly actionInputService: Pick<TelegramActionInputService, 'handle'>,
   ) {}
 
   async start(): Promise<void> {
     if (this.running) return;
 
-    // getUpdates and Telegram webhooks are mutually exclusive. Do not drop pending
-    // updates here so a deployment restart does not intentionally discard user actions.
     await this.telegramClient.deleteWebhook(false);
 
     this.running = true;
@@ -71,8 +69,6 @@ export class TelegramPollingService {
           } catch (error) {
             console.error(`Failed to process Telegram update ${update.update_id}`, error);
           } finally {
-            // Advance even when a malformed/user-level update fails so one poison update
-            // cannot block every following Telegram update.
             this.offset = update.update_id + 1;
           }
         }
@@ -91,7 +87,7 @@ export class TelegramPollingService {
     }
 
     if (update.message) {
-      await this.postponeInputService.handle(update.message);
+      await this.actionInputService.handle(update.message);
     }
   }
 }
