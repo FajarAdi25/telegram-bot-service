@@ -21,17 +21,17 @@ const server = createServer(async (req, res) => {
 
     if (method === 'GET' && url.pathname === '/health') {
       await pool.query('SELECT 1');
-      sendJson(res, 200, { status: 'ok', database: 'up' });
+      sendJson(res, 200, {
+        status: 'ok',
+        database: 'up',
+        telegramPolling: telegramModule.pollingService.isRunning() ? 'up' : 'down',
+        version: config.appVersion,
+      });
       return;
     }
 
     if (method === 'POST' && url.pathname === '/webhooks/alerts') {
       await alertModule.controller.receive(req, res);
-      return;
-    }
-
-    if (method === 'POST' && url.pathname === '/webhooks/telegram') {
-      await telegramModule.controller.receive(req, res);
       return;
     }
 
@@ -47,12 +47,30 @@ const server = createServer(async (req, res) => {
   }
 });
 
-server.listen(config.port, () => {
-  console.log(`Monitoring Telegram Bot listening on port ${config.port}`);
+server.listen(config.port, async () => {
+  console.log(`Monitoring Telegram Bot v${config.appVersion} listening on port ${config.port}`);
+
+  try {
+    await telegramModule.pollingService.start();
+  } catch (error) {
+    console.error('Failed to start Telegram long polling', error);
+    process.exit(1);
+  }
 });
 
+let shuttingDown = false;
 async function shutdown(signal: string): Promise<void> {
+  if (shuttingDown) return;
+  shuttingDown = true;
+
   console.log(`Received ${signal}, shutting down...`);
+
+  try {
+    await telegramModule.pollingService.stop();
+  } catch (error) {
+    console.error('Failed to stop Telegram long polling cleanly', error);
+  }
+
   server.close(async () => {
     await pool.end();
     process.exit(0);

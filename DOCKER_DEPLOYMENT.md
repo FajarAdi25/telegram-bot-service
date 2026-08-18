@@ -1,45 +1,61 @@
-# Docker Deployment Guide - Telegram Bot Service
+# Docker Deployment Guide - Monitoring Telegram Bot v1.1.0
 
-**Service:** Monitoring Telegram Bot  
-**Runtime:** Node.js 20 + TypeScript build  
+**Runtime:** Node.js 20 + TypeScript  
+**Telegram incoming mode:** Long polling  
 **Database:** External MySQL  
-**Timezone contract:** Asia/Jakarta for POSTPONE input
+**Service port:** HTTP `3004`
 
-## 1. Current port and service mapping
+## 1. Architecture
 
-The deployment follows the same external-MySQL pattern as Monitoring Service.
+v1.1.0 tidak membutuhkan Telegram webhook publik.
 
 ```text
-Windows local
-+------------------------ Windows Host ------------------------+
-| MySQL :3306                                                |
-| Monitoring Service host URL :3001                          |
-|                                                             |
-| Docker Desktop                                              |
-|   telegram-bot-service :3004                               |
-|      |                                                      |
-|      +--> Monitoring Service via host.docker.internal:3001 |
-|      +--> MySQL via host.docker.internal:3306              |
-+-------------------------------------------------------------+
+Monitoring Service container
+        |
+        | POST http://host.docker.internal:3004/webhooks/alerts
+        v
+Telegram Bot container :3004
+        |
+        +--> MySQL external
+        |
+        +--> outbound HTTPS -> api.telegram.org
+                              ^
+                              |
+                         Telegram User
+                     callback_query/message
 ```
 
-Monitoring Service can continue using:
+Telegram Bot menarik `callback_query` dan `message` menggunakan `getUpdates` long polling.
+
+Tidak diperlukan:
+
+```text
+public HTTPS endpoint
+Nginx
+Cloudflare Tunnel
+setWebhook
+POST /webhooks/telegram
+```
+
+## 2. Release version
+
+Set deployment env:
 
 ```env
-ALERT_WEBHOOK_URL=http://host.docker.internal:3004/webhooks/alerts
+APP_VERSION=1.1.0
 ```
 
-Telegram Bot Service calls Monitoring Service using:
+Docker image:
 
-```env
-MONITORING_SERVICE_BASE_URL=http://host.docker.internal:3001
+```text
+monitoring-telegram-bot:1.1.0
 ```
 
-## 2. Database prerequisite
+Gunakan exact version tag saat deployment.
 
-The MySQL database must already exist. The container startup migration creates the required tables, but it does not create the database itself.
+## 3. External MySQL prerequisite
 
-Example:
+Database harus sudah ada sebelum container dijalankan.
 
 ```sql
 CREATE DATABASE monitoring_telegram_bot
@@ -56,9 +72,7 @@ GRANT ALL PRIVILEGES
 FLUSH PRIVILEGES;
 ```
 
-For local development, using an existing MySQL account is also possible. Restrict the account host and privileges for non-local environments.
-
-The migration creates these tables:
+Migration membuat:
 
 ```text
 webhook_deliveries
@@ -66,265 +80,127 @@ incident_states
 postpone_sessions
 ```
 
-## 3. Container startup behavior
+## 4. Container startup
 
-The image uses a multi-stage Node.js build. On every container start it executes:
+Setiap container start menjalankan:
 
 ```text
 node dist/src/database/migrate.js
 ```
 
-and only after a successful migration starts:
+kemudian:
 
 ```text
 node dist/src/app.js
 ```
 
-If the database is unavailable or migration fails, the application does not start. Docker's restart policy retries the container.
+Application kemudian:
 
-## 4. Local Windows deployment
+1. membuka HTTP service;
+2. memanggil Telegram `deleteWebhook` tanpa membuang pending update;
+3. memulai Telegram long polling;
+4. memproses `callback_query` dan `message`.
 
-Requirements:
+Log normal:
 
-- Docker Desktop
-- Monitoring Service reachable from Windows at `http://localhost:3001`
-- Existing MySQL on Windows, normally `127.0.0.1:3306`
-- Telegram bot/token and Telegram chat/topic IDs already configured
-- Database `monitoring_telegram_bot` already created
+```text
+Monitoring Telegram Bot v1.1.0 listening on port 3004
+Telegram long polling started
+```
 
-Prepare the environment file:
+## 5. Windows local Docker
+
+Prepare env:
 
 ```powershell
 Copy-Item .env.docker.local.example .env.docker.local
 notepad .env.docker.local
 ```
 
-Important local values:
+Important values:
 
 ```env
+APP_VERSION=1.1.0
 APP_HOST_PORT=3004
 APP_PORT=3004
 
-MONITORING_SERVICE_BASE_URL=http://host.docker.internal:3001
-
-MYSQL_HOST=host.docker.internal
-MYSQL_PORT=3306
-MYSQL_DATABASE=monitoring_telegram_bot
-```
-
-Also fill in:
-
-```env
 TELEGRAM_BOT_TOKEN=<real-token>
-TELEGRAM_CHAT_ID=<real-supergroup-id>
+TELEGRAM_CHAT_ID=<supergroup-id>
 TELEGRAM_TOPIC_NOMAD_ID=<nomad-topic-id>
 TELEGRAM_TOPIC_CONSUL_ID=<consul-topic-id>
 TELEGRAM_TOPIC_MINIO_ID=<minio-topic-id>
 
-MONITORING_AUTH_USERNAME=<matching-monitoring-service-basic-auth-user>
-MONITORING_AUTH_PASSWORD=<matching-monitoring-service-basic-auth-password>
+MONITORING_SERVICE_BASE_URL=http://host.docker.internal:3001
+MONITORING_AUTH_USERNAME=<basic-auth-user>
+MONITORING_AUTH_PASSWORD=<basic-auth-password>
 
+MYSQL_HOST=host.docker.internal
+MYSQL_PORT=3306
 MYSQL_USER=<mysql-user>
 MYSQL_PASSWORD=<mysql-password>
+MYSQL_DATABASE=monitoring_telegram_bot
+MYSQL_CONNECTION_LIMIT=10
 ```
 
-Do not commit `.env.docker.local`.
-
-Build and start:
+Deploy:
 
 ```powershell
 docker compose --env-file .env.docker.local -f compose.local.yml up -d --build
 ```
 
-Check container:
+Status:
 
 ```powershell
 docker compose --env-file .env.docker.local -f compose.local.yml ps
 ```
 
-Follow logs:
+Logs:
 
 ```powershell
 docker compose --env-file .env.docker.local -f compose.local.yml logs -f telegram-bot-service
 ```
 
-Health check from Windows:
+Health:
 
 ```powershell
 curl http://localhost:3004/health
 ```
 
-Expected response:
+Expected:
 
 ```json
 {
   "status": "ok",
-  "database": "up"
+  "database": "up",
+  "telegramPolling": "up",
+  "version": "1.1.0"
 }
 ```
 
-Stop:
+## 6. Linux development server
 
-```powershell
-docker compose --env-file .env.docker.local -f compose.local.yml down
-```
-
-`down` removes only the Telegram Bot container/network. It does not remove the external MySQL database.
-
-## 5. Monitoring Service integration
-
-For the current Monitoring Service Docker deployment, keep/set:
-
-```env
-ALERT_WEBHOOK_URL=http://host.docker.internal:3004/webhooks/alerts
-```
-
-Then rebuild/restart Monitoring Service if its environment changed.
-
-The request path is:
-
-```text
-Monitoring Service container
-        |
-        | POST
-        v
-host.docker.internal:3004/webhooks/alerts
-        |
-        v
-Telegram Bot container
-```
-
-## 6. Telegram webhook requirement
-
-Sending messages from the bot container to Telegram only requires outbound Internet access.
-
-Receiving button callbacks and POSTPONE replies requires Telegram to reach:
-
-```text
-POST /webhooks/telegram
-```
-
-`http://localhost:3004` is not reachable from Telegram's servers. Expose the bot through an HTTPS public endpoint.
-
-For local development, an HTTPS tunnel can forward to:
-
-```text
-http://localhost:3004
-```
-
-For a Linux development server, prefer a stable HTTPS hostname/reverse proxy, for example:
-
-```text
-https://telegram-bot-dev.example.com/webhooks/telegram
-```
-
-Register that complete URL as the Telegram webhook and allow both update types:
-
-```json
-{
-  "allowed_updates": ["callback_query", "message"]
-}
-```
-
-`message` is required because POSTPONE uses a user reply containing `DD-MM-YYYY HH:mm`.
-
-## 7. End-to-end local check
-
-After both containers are running:
-
-### 7.1 Health
-
-```powershell
-curl http://localhost:3004/health
-```
-
-### 7.2 Alert delivery directly to the bot
-
-```powershell
-curl --location 'http://localhost:3004/webhooks/alerts' `
-  --header 'Content-Type: application/json' `
-  --data '{
-    "event": "INCIDENT_ALERT",
-    "kind": "INITIAL",
-    "incident": {
-      "id": "INC-DOCKER-TEST-001",
-      "status": "OPEN",
-      "source": "NOMAD",
-      "type": "DRIVER_UNHEALTHY",
-      "severity": "WARNING",
-      "resource": {
-        "type": "DRIVER",
-        "key": "sample-node-id:docker",
-        "name": "nomadworker-east-4/docker"
-      },
-      "message": "Docker driver unhealthy",
-      "openedAt": "2026-08-17T08:00:00.000Z",
-      "resolvedAt": null,
-      "reminderCount": 0
-    }
-  }'
-```
-
-Expected result:
-
-```text
-Telegram Bot container
--> MySQL dedup record
--> Telegram API
--> NOMAD topic
-```
-
-### 7.3 Monitoring Service to Telegram Bot
-
-Use the Monitoring Service dummy webhook endpoint. The Monitoring Service should forward the payload using `ALERT_WEBHOOK_URL` to the bot container.
-
-### 7.4 ACK / POSTPONE
-
-For these actions, Telegram's public webhook must already be configured because the action starts from Telegram.
-
-ACK flow:
-
-```text
-Telegram callback
--> public HTTPS endpoint
--> Telegram Bot :3004
--> http://host.docker.internal:3001/api/v1/incidents/:id/acknowledge
-```
-
-POSTPONE flow:
-
-```text
-Telegram callback
--> bot asks DD-MM-YYYY HH:mm
--> user replies
--> Telegram webhook message update
--> Telegram Bot
--> Monitoring Service /postpone
-```
-
-## 8. Linux development server
-
-Prepare the untracked environment file:
+Prepare env:
 
 ```bash
 cp .env.docker.dev.example .env.docker.dev
 chmod 600 .env.docker.dev
+nano .env.docker.dev
 ```
 
-If Monitoring Service is exposed on the same Linux host at port 3001:
+If Monitoring Service is exposed on the same host at port 3001:
 
 ```env
 MONITORING_SERVICE_BASE_URL=http://host.docker.internal:3001
 ```
 
-If MySQL is installed on the same Linux server:
+If MySQL is on the same Linux host:
 
 ```env
 MYSQL_HOST=host.docker.internal
 MYSQL_PORT=3306
 ```
 
-`compose.dev.yml` contains:
+`compose.dev.yml` already contains:
 
 ```yaml
 extra_hosts:
@@ -337,39 +213,180 @@ Deploy:
 docker compose --env-file .env.docker.dev -f compose.dev.yml up -d --build
 ```
 
-Status:
+Status/logs:
 
 ```bash
 docker compose --env-file .env.docker.dev -f compose.dev.yml ps
-```
-
-Logs:
-
-```bash
 docker compose --env-file .env.docker.dev -f compose.dev.yml logs -f telegram-bot-service
 ```
 
-Stop:
+## 7. Monitoring Service integration
 
-```bash
-docker compose --env-file .env.docker.dev -f compose.dev.yml down
+Monitoring Service still sends alerts to:
+
+```text
+POST /webhooks/alerts
 ```
 
-## 9. Linux MySQL networking
+For the existing Docker deployment:
 
-A Docker bridge container cannot connect to a MySQL server that only listens on `127.0.0.1` of the Linux host.
+```env
+ALERT_WEBHOOK_URL=http://host.docker.internal:3004/webhooks/alerts
+```
 
-If MySQL runs on the same Linux machine, configure MySQL to listen on an interface reachable from Docker, then restrict access using MySQL grants and firewall rules.
+No change is required to the incident payload contract.
 
-Check the listener:
+## 8. Telegram long polling requirements
+
+The Telegram Bot container must be able to make outbound HTTPS connections to:
+
+```text
+api.telegram.org:443
+```
+
+Quick connectivity test from the host:
+
+```bash
+curl -I https://api.telegram.org
+```
+
+To test from inside the running container:
+
+```bash
+docker exec monitoring-telegram-bot node -e "fetch('https://api.telegram.org').then(r => console.log(r.status)).catch(e => { console.error(e); process.exit(1); })"
+```
+
+### One polling instance per bot token
+
+Do not scale this service to multiple active replicas using the same `TELEGRAM_BOT_TOKEN`.
+
+Correct:
+
+```text
+1 bot token -> 1 polling container
+```
+
+Incorrect:
+
+```text
+1 bot token -> 2+ polling containers
+```
+
+The Compose files therefore define one service instance and no replica scaling.
+
+## 9. Migrating from v1.0.0 webhook mode
+
+v1.1.0 calls `deleteWebhook` at startup. It does not intentionally drop pending Telegram updates.
+
+If you specifically want a clean cut and want to discard stale queued Telegram updates, run this once before deploying v1.1.0:
+
+```bash
+curl "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/deleteWebhook?drop_pending_updates=true"
+```
+
+Then deploy v1.1.0.
+
+Verify webhook is empty if needed:
+
+```bash
+curl "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getWebhookInfo"
+```
+
+Expected relevant field:
+
+```json
+{
+  "result": {
+    "url": ""
+  }
+}
+```
+
+Do not call `setWebhook` while v1.1.0 is using long polling.
+
+## 10. End-to-end test
+
+### 10.1 Health
+
+```bash
+curl http://localhost:3004/health
+```
+
+Ensure:
+
+```text
+telegramPolling = up
+```
+
+### 10.2 Monitoring Service -> Telegram
+
+Send an `INITIAL` alert to:
+
+```text
+http://localhost:3004/webhooks/alerts
+```
+
+or use the Monitoring Service dummy endpoint.
+
+Expected:
+
+```text
+Monitoring Service
+-> Bot /webhooks/alerts
+-> MySQL dedup
+-> Telegram sendMessage
+-> source topic
+```
+
+### 10.3 ACK
+
+Click `Acknowledge` in Telegram.
+
+Expected flow:
+
+```text
+Telegram user
+-> Telegram API
+-> Bot getUpdates callback_query
+-> Monitoring Service /acknowledge
+-> button ACK removed
+```
+
+No inbound request from Telegram to port 3004 is involved.
+
+### 10.4 POSTPONE
+
+Click `Postpone`, then reply to the Force Reply prompt:
+
+```text
+18-08-2026 15:30
+```
+
+Expected flow:
+
+```text
+Telegram user
+-> getUpdates callback_query
+-> Bot sends prompt
+-> user reply
+-> getUpdates message
+-> Bot parses Asia/Jakarta
+-> Monitoring Service /postpone
+```
+
+## 11. MySQL networking note on Linux
+
+If MySQL is installed on the same Linux host, MySQL must listen on an interface reachable from Docker. A MySQL listener bound only to host `127.0.0.1` cannot be reached through Docker bridge networking.
+
+Check:
 
 ```bash
 sudo ss -lntp | grep 3306
 ```
 
-Do not expose MySQL port 3306 publicly unless explicitly required.
+Restrict MySQL grants and firewall rules. Do not expose port 3306 publicly unless required.
 
-## 10. Git deployment on Linux
+## 12. Git deployment
 
 Initial deployment:
 
@@ -393,16 +410,4 @@ git pull --ff-only origin develop
 docker compose --env-file .env.docker.dev -f compose.dev.yml up -d --build
 ```
 
-The external MySQL database is not recreated by deployment.
-
-## 11. Production notes
-
-For production:
-
-- Do not commit bot token, Basic Auth credentials, or MySQL passwords.
-- Use a stable HTTPS endpoint for `/webhooks/telegram`.
-- Keep port `3004` private if a reverse proxy is in front of the application.
-- Restrict MySQL network access and user privileges.
-- Use a dedicated MySQL user for Telegram Bot Service.
-- Back up the database because deduplication, ACK state, and pending POSTPONE sessions are persistent state.
-- Rotate the Telegram bot token immediately if it is exposed.
+`.env.docker.dev` remains untracked.

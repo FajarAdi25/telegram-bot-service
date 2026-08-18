@@ -1,8 +1,54 @@
 # Monitoring Telegram Bot Service
 
-Telegram Bot Service untuk menerima incident notification dari Monitoring Service dan meneruskannya ke Telegram Topic.
+## Release
+
+Current stable service version: **v1.1.0**.
+
+Docker image:
+
+```text
+monitoring-telegram-bot:1.1.0
+```
+
+Version history is maintained in `CHANGELOG.md`. Versioning rules are documented in `docs/VERSIONING.md`.
+
+Telegram Bot Service menerima incident notification dari Monitoring Service, mengirimkannya ke Telegram Topic, dan menerima aksi user Telegram menggunakan **long polling**.
 
 Baseline contract: **Telegram Bot Service Integration API v1.0**.
+
+## v1.1.0 transport architecture
+
+Telegram incoming update tidak lagi memakai public webhook.
+
+```text
+Monitoring Service
+      |
+      | HTTP POST /webhooks/alerts
+      v
+Telegram Bot Service :3004
+      |
+      | outbound HTTPS long polling (getUpdates)
+      v
+Telegram Bot API
+      ^
+      |
+      | callback_query / message
+      |
+Telegram User
+```
+
+Implikasi:
+
+- `POST /webhooks/alerts` tetap digunakan oleh Monitoring Service;
+- `POST /webhooks/telegram` dihapus;
+- Bot menjalankan Telegram `getUpdates` long polling;
+- Bot memproses `callback_query` untuk ACK/POSTPONE;
+- Bot memproses `message` untuk reply manual POSTPONE;
+- public domain, HTTPS ingress, Nginx, dan Telegram `setWebhook` tidak diperlukan;
+- container harus memiliki outbound HTTPS access ke `api.telegram.org`;
+- satu bot token hanya boleh dipakai oleh satu polling instance aktif.
+
+Saat startup Bot menjalankan `deleteWebhook` tanpa `drop_pending_updates`, lalu memulai long polling.
 
 ## Scope
 
@@ -13,6 +59,7 @@ Service ini menangani:
 - route alert berdasarkan `incident.source` ke Telegram Topic;
 - membuat message baru untuk setiap event;
 - action `ACK` dan `POSTPONE` dari Telegram;
+- menerima Telegram action melalui long polling;
 - mengirim identity user Telegram ke Monitoring Service;
 - Basic Auth untuk request Telegram Bot Service -> Monitoring Service;
 - persistent webhook deduplication menggunakan MySQL;
@@ -20,14 +67,14 @@ Service ini menangani:
 - persistent pending POSTPONE prompt;
 - input POSTPONE absolut dengan format `DD-MM-YYYY HH:mm` pada timezone `Asia/Jakarta`.
 
-Service ini **tidak** melakukan recovery/resolve incident. Monitoring Service tetap menjadi source of truth.
+Service ini tidak melakukan recovery/resolve incident. Monitoring Service tetap menjadi source of truth.
 
 ## Runtime
 
 - Node.js >= 20
 - TypeScript
 - MySQL
-- Telegram Bot API
+- Telegram Bot API long polling
 
 ## Project Structure
 
@@ -46,6 +93,10 @@ src/
 │   ├── alert/
 │   ├── postpone/
 │   └── telegram/
+│       ├── telegram-polling.service.ts
+│       ├── telegram-callback.service.ts
+│       ├── telegram.client.ts
+│       └── ...
 ├── repositories/
 │   ├── incident-state.repository.ts
 │   ├── postpone-session.repository.ts
@@ -58,6 +109,7 @@ src/
 Copy `.env.example` menjadi `.env`.
 
 ```env
+APP_VERSION=1.1.0
 PORT=3001
 
 TELEGRAM_BOT_TOKEN=
@@ -90,15 +142,10 @@ CREATE DATABASE monitoring_telegram_bot
   COLLATE utf8mb4_unicode_ci;
 ```
 
-Install dependency:
+Install dependency dan jalankan migration:
 
 ```bash
 npm install
-```
-
-Jalankan migration:
-
-```bash
 npm run db:migrate
 ```
 
@@ -112,7 +159,7 @@ postpone_sessions
 
 ### webhook_deliveries
 
-Menyimpan persistent deduplication webhook.
+Menyimpan persistent deduplication webhook dari Monitoring Service.
 
 Dedup key:
 
@@ -120,15 +167,11 @@ Dedup key:
 incident.id + kind + reminderCount
 ```
 
-Jika Telegram delivery berhasil, status menjadi `SENT`.
-
-Jika Telegram delivery gagal, status menjadi `FAILED` dan endpoint webhook mengembalikan error. Retry dari Monitoring Service dapat menggunakan dedup key yang sama dan diproses kembali.
+Jika Telegram delivery berhasil, status menjadi `SENT`. Jika delivery gagal, status menjadi `FAILED` sehingga retry Monitoring Service dapat memproses key yang sama kembali.
 
 ### incident_states
 
-Menyimpan ACK state lokal Bot setelah Monitoring Service mengonfirmasi ACK berhasil.
-
-Tujuannya:
+Menyimpan ACK state lokal setelah Monitoring Service mengonfirmasi ACK berhasil.
 
 ```text
 INITIAL / REMINDER sebelum ACK
@@ -142,7 +185,7 @@ ACK tidak menghentikan reminder.
 
 ### postpone_sessions
 
-Menyimpan pending prompt POSTPONE. Session dihubungkan ke Telegram user, chat, topic, dan prompt message sehingga reply yang benar dapat dipetakan kembali ke incident.
+Menyimpan pending prompt POSTPONE. Session dipetakan ke Telegram user, chat, topic, dan prompt message sehingga reply user dapat dikaitkan kembali ke incident.
 
 ## Running Locally
 
@@ -150,6 +193,13 @@ Menyimpan pending prompt POSTPONE. Session dihubungkan ke Telegram user, chat, t
 npm install
 npm run db:migrate
 npm run dev
+```
+
+Saat startup, log normal mencakup:
+
+```text
+Monitoring Telegram Bot v1.1.0 listening on port 3001
+Telegram long polling started
 ```
 
 Health check:
@@ -163,23 +213,19 @@ Expected:
 ```json
 {
   "status": "ok",
-  "database": "up"
+  "database": "up",
+  "telegramPolling": "up",
+  "version": "1.1.0"
 }
 ```
 
 ## Monitoring Service -> Telegram Bot
 
-Endpoint Bot:
+Endpoint Bot tetap:
 
 ```http
 POST /webhooks/alerts
 Content-Type: application/json
-```
-
-Monitoring Service local config:
-
-```env
-ALERT_WEBHOOK_URL=http://localhost:3001/webhooks/alerts
 ```
 
 Example payload:
@@ -216,15 +262,6 @@ Response normal:
 }
 ```
 
-Duplicate yang sudah/sedang diproses:
-
-```json
-{
-  "success": true,
-  "duplicate": true
-}
-```
-
 ## Telegram Topic Routing
 
 ```text
@@ -233,11 +270,9 @@ CONSUL -> TELEGRAM_TOPIC_CONSUL_ID
 MINIO  -> TELEGRAM_TOPIC_MINIO_ID
 ```
 
-Current Monitoring Service MVP mengirim `NOMAD`. Routing `CONSUL` dan `MINIO` tetap tersedia untuk source berikutnya.
+Current Monitoring Service MVP mengirim `NOMAD`. Routing `CONSUL` dan `MINIO` tetap tersedia.
 
 ## Notification Behavior
-
-Setiap event menghasilkan message baru:
 
 ```text
 INITIAL  -> new Telegram message
@@ -258,40 +293,60 @@ RESOLVED
 no action button
 ```
 
-Setelah ACK dari sebuah message berhasil, button ACK pada message tersebut dihapus menggunakan Telegram `editMessageReplyMarkup`. Notification berikutnya untuk incident yang sama juga tidak menampilkan ACK karena state tersimpan di MySQL.
+Setelah ACK berhasil, button ACK pada message tersebut dihapus. Notification berikutnya untuk incident yang sama juga tidak menampilkan ACK karena state tersimpan di MySQL.
+
+## Telegram Long Polling
+
+Incoming Telegram update diambil oleh Bot menggunakan Telegram Bot API `getUpdates`.
+
+Update type yang diproses:
+
+```text
+callback_query -> ACK / POSTPONE button
+message        -> manual POSTPONE reply
+```
+
+Polling menggunakan server-side timeout 25 detik dan retry setelah error transport.
+
+Saat shutdown container, active polling request dibatalkan terlebih dahulu sebelum database pool ditutup.
+
+### Migration from webhook mode
+
+v1.1.0 otomatis memanggil `deleteWebhook` saat polling start. Pending update tidak sengaja dibuang.
+
+Untuk deployment yang ingin membuang update lama secara eksplisit, lakukan sekali sebelum start:
+
+```bash
+curl "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/deleteWebhook?drop_pending_updates=true"
+```
+
+Jangan menjalankan `setWebhook` untuk v1.1.0.
+
+### Single instance requirement
+
+Jalankan **satu replica** polling untuk satu `TELEGRAM_BOT_TOKEN`. Jangan menjalankan dua container aktif dengan token yang sama.
 
 ## ACK Flow
 
 ```text
-Telegram user
-    |
-    | Acknowledge
-    v
+User klik Acknowledge
+        |
+        v
+Telegram API
+        |
+        | getUpdates / callback_query
+        v
 Telegram Bot
-    |
-    | Basic Auth + body.user
-    v
+        |
+        | Basic Auth + body.user
+        v
 POST /api/v1/incidents/:incidentId/acknowledge
-    |
-    v
+        |
+        v
 Monitoring Service
 ```
 
-Request body yang dibuat Bot:
-
-```json
-{
-  "user": {
-    "id": "5405675168",
-    "name": "Fajar Adipras",
-    "username": "fajaradipras"
-  }
-}
-```
-
-`username` hanya dikirim jika tersedia.
-
-Tidak ada whitelist user di Bot Service pada implementasi ini. Semua user yang dapat menggunakan action Bot akan diteruskan sebagai identity ke Monitoring Service.
+Identity user berasal dari `callback_query.from`.
 
 ## POSTPONE Flow
 
@@ -299,10 +354,16 @@ Tidak ada whitelist user di Bot Service pada implementasi ini. Semua user yang d
 User klik Postpone
         |
         v
+long polling menerima callback_query
+        |
+        v
 Bot mengirim Force Reply prompt
         |
         v
 User reply: 17-08-2026 13:30
+        |
+        v
+long polling menerima message
         |
         v
 Bot parse sebagai Asia/Jakarta
@@ -320,90 +381,18 @@ Format input wajib:
 DD-MM-YYYY HH:mm
 ```
 
-Timezone selalu:
-
-```text
-Asia/Jakarta (UTC+07:00)
-```
-
-Bot menolak:
-
-- format yang tidak sesuai;
-- tanggal kalender yang tidak valid;
-- waktu yang tidak lebih besar dari waktu sekarang.
-
-Request body:
-
-```json
-{
-  "user": {
-    "id": "5405675168",
-    "name": "Fajar Adipras",
-    "username": "fajaradipras"
-  },
-  "postponeUntil": "2026-08-17T13:30:00+07:00"
-}
-```
-
-`remark` tidak dikirim karena belum ada UX input remark pada scope saat ini.
-
-## Telegram Webhook
-
-Untuk menerima button callback dan manual POSTPONE reply, Telegram harus mengirim dua update type:
-
-```json
-[
-  "callback_query",
-  "message"
-]
-```
-
-Contoh registration:
-
-```bash
-curl --request POST \
-  "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook" \
-  --header "Content-Type: application/json" \
-  --data '{
-    "url": "https://YOUR_PUBLIC_HOST/webhooks/telegram",
-    "allowed_updates": ["callback_query", "message"],
-    "drop_pending_updates": true
-  }'
-```
-
-Untuk local end-to-end callback testing, expose port `3001` melalui HTTPS public tunnel terlebih dahulu.
+Timezone selalu `Asia/Jakarta (UTC+07:00)`.
 
 ## Monitoring Service Authentication
 
-ACK dan POSTPONE memakai HTTP Basic Auth.
-
-Bot membentuk header:
-
-```http
-Authorization: Basic base64(username:password)
-```
-
-Credentials hanya dibaca dari environment:
+ACK dan POSTPONE memakai HTTP Basic Auth melalui:
 
 ```env
 MONITORING_AUTH_USERNAME=
 MONITORING_AUTH_PASSWORD=
 ```
 
-Jangan hardcode credentials ke source atau repository.
-
-## Error Handling
-
-Monitoring Service error code yang ditangani untuk Telegram UX:
-
-```text
-INVALID_POSTPONE_UNTIL
-UNAUTHORIZED_SERVICE
-INCIDENT_NOT_FOUND
-INCIDENT_NOT_OPEN
-```
-
-ACK dan POSTPONE memakai identity dari `callback_query.from` atau `message.from`.
+Credentials tidak boleh di-hardcode.
 
 ## Tests
 
@@ -415,16 +404,17 @@ npm run build
 
 ## Production Notes
 
-- gunakan HTTPS untuk Telegram webhook;
-- gunakan HTTPS untuk Monitoring Service jika melewati network yang tidak dipercaya;
+- outbound HTTPS ke `api.telegram.org` wajib tersedia;
+- public inbound HTTPS tidak diperlukan untuk Telegram karena v1.1.0 memakai polling;
+- jalankan hanya satu polling instance untuk satu bot token;
 - simpan Bot Token dan Basic Auth credentials sebagai secret;
-- jalankan `npm run db:migrate` sebelum start versi baru;
-- endpoint `/health` juga memeriksa koneksi MySQL;
-- current dedup contract belum memiliki `notificationId`, sehingga key mengikuti `incident.id + kind + reminderCount`.
+- jalankan migration sebelum application start;
+- `/health` memeriksa MySQL dan status polling;
+- Monitoring Service webhook dedup tetap menggunakan `incident.id + kind + reminderCount`.
 
-## Docker deployment
+## Docker Deployment
 
-Docker deployment files are included for Windows local and Linux development environments:
+Files:
 
 - `Dockerfile`
 - `compose.local.yml`
@@ -433,4 +423,4 @@ Docker deployment files are included for Windows local and Linux development env
 - `.env.docker.dev.example`
 - `DOCKER_DEPLOYMENT.md`
 
-See `DOCKER_DEPLOYMENT.md` for the complete deployment procedure.
+Lihat `DOCKER_DEPLOYMENT.md` untuk deployment lengkap.

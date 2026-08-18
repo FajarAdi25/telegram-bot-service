@@ -31,6 +31,7 @@ function portValue(name: string, fallback: number): number {
 }
 
 export interface AppConfig {
+  appVersion: string;
   port: number;
   telegram: {
     botToken: string;
@@ -58,6 +59,7 @@ export interface AppConfig {
 
 export function loadConfig(): AppConfig {
   return {
+    appVersion: optional('APP_VERSION', '1.1.0'),
     port: portValue('PORT', 3001),
     telegram: {
       botToken: required('TELEGRAM_BOT_TOKEN'),

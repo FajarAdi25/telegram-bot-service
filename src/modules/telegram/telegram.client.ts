@@ -1,4 +1,4 @@
-import type { TelegramInlineButton } from './telegram.types.js';
+import type { TelegramInlineButton, TelegramUpdate } from './telegram.types.js';
 
 interface SendMessageInput {
   chatId: string;
@@ -17,6 +17,11 @@ interface TelegramApiResponse<T> {
 
 interface TelegramSentMessage {
   message_id: number;
+}
+
+interface CallOptions {
+  timeoutMs?: number;
+  signal?: AbortSignal;
 }
 
 export class TelegramClient {
@@ -64,12 +69,46 @@ export class TelegramClient {
     });
   }
 
-  private async call<T = unknown>(method: string, body: unknown): Promise<T> {
+  async deleteWebhook(dropPendingUpdates = false): Promise<void> {
+    await this.call<boolean>('deleteWebhook', {
+      drop_pending_updates: dropPendingUpdates,
+    });
+  }
+
+  async getUpdates(
+    offset: number | undefined,
+    timeoutSeconds: number,
+    signal?: AbortSignal,
+  ): Promise<TelegramUpdate[]> {
+    return this.call<TelegramUpdate[]>(
+      'getUpdates',
+      {
+        ...(offset !== undefined ? { offset } : {}),
+        timeout: timeoutSeconds,
+        allowed_updates: ['callback_query', 'message'],
+      },
+      {
+        timeoutMs: (timeoutSeconds + 10) * 1000,
+        signal,
+      },
+    );
+  }
+
+  private async call<T = unknown>(
+    method: string,
+    body: unknown,
+    options: CallOptions = {},
+  ): Promise<T> {
+    const timeoutSignal = AbortSignal.timeout(options.timeoutMs ?? 4000);
+    const signal = options.signal
+      ? AbortSignal.any([options.signal, timeoutSignal])
+      : timeoutSignal;
+
     const response = await fetch(`${this.baseUrl}/${method}`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(4000),
+      signal,
     });
 
     const result = (await response.json()) as TelegramApiResponse<T>;

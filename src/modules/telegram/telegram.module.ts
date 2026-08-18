@@ -5,8 +5,8 @@ import { IncidentStateRepository } from '../../repositories/incident-state.repos
 import { PostponeSessionRepository } from '../../repositories/postpone-session.repository.js';
 import { PostponeInputService } from '../postpone/postpone-input.service.js';
 import { TelegramCallbackService } from './telegram-callback.service.js';
-import { TelegramController } from './telegram.controller.js';
 import { TelegramClient } from './telegram.client.js';
+import { TelegramPollingService } from './telegram-polling.service.js';
 import { TelegramService } from './telegram.service.js';
 import { TelegramTopicRouter } from './telegram-topic-router.js';
 
@@ -37,12 +37,16 @@ export function createTelegramModule(config: AppConfig, pool: Pool) {
     telegramClient,
   );
 
-  const controller = new TelegramController(callbackService, postponeInputService);
+  const pollingService = new TelegramPollingService(
+    telegramClient,
+    callbackService,
+    postponeInputService,
+  );
 
   return {
     service,
     callbackService,
     postponeInputService,
-    controller,
+    pollingService,
   };
 }
