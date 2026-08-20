@@ -27,6 +27,72 @@ function requireString(
   return value;
 }
 
+function parseAcknowledgement(value: unknown) {
+  if (!isRecord(value)) {
+    return {
+      status: false,
+    };
+  }
+
+  return {
+    status: Boolean(value.status),
+
+    by: isRecord(value.by)
+      ? {
+          id: typeof value.by.id === "string" ? value.by.id : undefined,
+
+          name: typeof value.by.name === "string" ? value.by.name : undefined,
+
+          username:
+            typeof value.by.username === "string"
+              ? value.by.username
+              : undefined,
+        }
+      : undefined,
+
+    at:
+      value.at === undefined || value.at === null
+        ? null
+        : requireIsoDate(String(value.at), "Acknowledgement at"),
+
+    note: typeof value.note === "string" ? value.note : null,
+  };
+}
+
+function parsePostpone(value: unknown) {
+  if (!isRecord(value)) {
+    return {
+      status: false,
+    };
+  }
+
+  return {
+    status: Boolean(value.status),
+
+    by: isRecord(value.by)
+      ? {
+          id: typeof value.by.id === "string" ? value.by.id : undefined,
+
+          name: typeof value.by.name === "string" ? value.by.name : undefined,
+
+          username:
+            typeof value.by.username === "string"
+              ? value.by.username
+              : undefined,
+        }
+      : undefined,
+
+    at: value.at === undefined || value.at === null ? null : String(value.at),
+
+    until:
+      value.until === undefined || value.until === null
+        ? null
+        : String(value.until),
+
+    remark: typeof value.remark === "string" ? value.remark : null,
+  };
+}
+
 function optionalNullableString(
   candidate: Record<string, unknown>,
   field: string,
@@ -208,41 +274,28 @@ export function parseAlertWebhook(payload: unknown): AlertWebhookDto {
       openedAt,
       resolvedAt,
       reminderCount: reminderCount as number,
-      acknowledgedAt: parseOptionalNullableIsoDate(
-        incident,
-        "acknowledgedAt",
-        "Incident acknowledgedAt",
-      ),
-      acknowledgedByUserName: optionalNullableString(
-        incident,
-        "acknowledgedByUserName",
-        "Incident acknowledgedByUserName",
-      ),
-      acknowledgementNote: optionalNullableString(
-        incident,
-        "acknowledgementNote",
-        "Incident acknowledgementNote",
-      ),
-      postponedAt: parseOptionalNullableIsoDate(
-        incident,
-        "postponedAt",
-        "Incident postponedAt",
-      ),
-      postponedByUserName: optionalNullableString(
-        incident,
-        "postponedByUserName",
-        "Incident postponedByUserName",
-      ),
-      postponeUntil: parseOptionalNullableIsoDate(
-        incident,
-        "postponeUntil",
-        "Incident postponeUntil",
-      ),
-      postponeRemark: optionalNullableString(
-        incident,
-        "postponeRemark",
-        "Incident postponeRemark",
-      ),
+      acknowledgement: parseAcknowledgement(incident.acknowledgement),
+      postpone: parsePostpone(incident.postpone),
+      // postponedAt: parseOptionalNullableIsoDate(
+      //   incident,
+      //   "postponedAt",
+      //   "Incident postponedAt",
+      // ),
+      // postponedByUserName: optionalNullableString(
+      //   incident,
+      //   "postponedByUserName",
+      //   "Incident postponedByUserName",
+      // ),
+      // postponeUntil: parseOptionalNullableIsoDate(
+      //   incident,
+      //   "postponeUntil",
+      //   "Incident postponeUntil",
+      // ),
+      // postponeRemark: optionalNullableString(
+      //   incident,
+      //   "postponeRemark",
+      //   "Incident postponeRemark",
+      // ),
     },
   };
 }
