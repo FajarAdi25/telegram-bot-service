@@ -40,6 +40,12 @@ function optionalNullableString(
   return value;
 }
 
+function parseNullableIsoDate(candidate: Record<string, unknown>, field: string, label: string): string | null {
+  const value = candidate[field];
+  if (value === null) return null;
+  return requireIsoDate(requireString(candidate, field, label), label);
+}
+
 function parseResource(value: unknown): IncidentResourceDto {
   if (!isRecord(value)) {
     throw new HttpError(400, 'Incident resource is required');
@@ -136,11 +142,23 @@ export function parseAlertWebhook(payload: unknown): AlertWebhookDto {
         INCIDENT_SEVERITIES,
         'Incident severity',
       ),
+      clusterId: Number(incident.clusterId),
+      clusterName: requireString(incident, 'clusterName', 'Incident clusterName'),
+      site: requireString(incident, 'site', 'Incident site'),
+      appName: requireString(incident, 'appName', 'Incident appName'),
+      env: requireString(incident, 'env', 'Incident env'),
       resource: parseResource(incident.resource),
       message: requireString(incident, 'message', 'Incident message'),
       openedAt,
       resolvedAt,
       reminderCount: reminderCount as number,
+      acknowledgedAt: parseNullableIsoDate(incident, 'acknowledgedAt', 'Incident acknowledgedAt'),
+      acknowledgedByUserName: optionalNullableString(incident, 'acknowledgedByUserName', 'Incident acknowledgedByUserName'),
+      acknowledgementNote: optionalNullableString(incident, 'acknowledgementNote', 'Incident acknowledgementNote'),
+      postponedAt: parseNullableIsoDate(incident, 'postponedAt', 'Incident postponedAt'),
+      postponedByUserName: optionalNullableString(incident, 'postponedByUserName', 'Incident postponedByUserName'),
+      postponeUntil: parseNullableIsoDate(incident, 'postponeUntil', 'Incident postponeUntil'),
+      postponeRemark: optionalNullableString(incident, 'postponeRemark', 'Incident postponeRemark'),
     },
   };
 }

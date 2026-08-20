@@ -21,11 +21,23 @@ export interface IncidentDto {
   source: AlertSource;
   type: string;
   severity: IncidentSeverity;
+  clusterId?: number;
+  clusterName?: string;
+  site?: string;
+  appName?: string;
+  env?: string;
   resource: IncidentResourceDto;
   message: string;
   openedAt: string;
   resolvedAt: string | null;
   reminderCount: number;
+  acknowledgedAt?: string | null;
+  acknowledgedByUserName?: string | null;
+  acknowledgementNote?: string | null;
+  postponedAt?: string | null;
+  postponedByUserName?: string | null;
+  postponeUntil?: string | null;
+  postponeRemark?: string | null;
 }
 
 export interface AlertWebhookDto {
