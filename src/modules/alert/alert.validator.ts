@@ -1,5 +1,5 @@
-import { HttpError } from '../../shared/errors/http-error.js';
-import { isAlertSource } from '../../shared/types/alert-source.js';
+import { HttpError } from "../../shared/errors/http-error.js";
+import { isAlertSource } from "../../shared/types/alert-source.js";
 import {
   INCIDENT_NOTIFICATION_KINDS,
   INCIDENT_SEVERITIES,
@@ -9,10 +9,10 @@ import {
   type IncidentResourceDto,
   type IncidentSeverity,
   type IncidentStatus,
-} from './dto/alert-webhook.dto.js';
+} from "./dto/alert-webhook.dto.js";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
 function requireString(
@@ -21,7 +21,7 @@ function requireString(
   label: string,
 ): string {
   const value = candidate[field];
-  if (typeof value !== 'string' || value.trim() === '') {
+  if (typeof value !== "string" || value.trim() === "") {
     throw new HttpError(400, `${label} is required`);
   }
   return value;
@@ -34,27 +34,56 @@ function optionalNullableString(
 ): string | null {
   const value = candidate[field];
   if (value === undefined || value === null) return null;
-  if (typeof value !== 'string' || value.trim() === '') {
+  if (typeof value !== "string" || value.trim() === "") {
     throw new HttpError(400, `${label} must be a non-empty string or null`);
   }
   return value;
 }
 
-function parseNullableIsoDate(candidate: Record<string, unknown>, field: string, label: string): string | null {
+function parseNullableIsoDate(
+  candidate: Record<string, unknown>,
+  field: string,
+  label: string,
+): string | null {
   const value = candidate[field];
-  if (value === null) return null;
+
+  if (value === undefined || value === null) {
+    return null;
+  }
+
+  if (typeof value !== "string" || value.trim() === "") {
+    throw new HttpError(
+      400,
+      `${label} must be a valid ISO-8601 datetime or null`,
+    );
+  }
+
+  return requireIsoDate(value, label);
+}
+
+function parseOptionalNullableIsoDate(
+  candidate: Record<string, unknown>,
+  field: string,
+  label: string,
+): string | null {
+  const value = candidate[field];
+
+  if (value === undefined || value === null) {
+    return null;
+  }
+
   return requireIsoDate(requireString(candidate, field, label), label);
 }
 
 function parseResource(value: unknown): IncidentResourceDto {
   if (!isRecord(value)) {
-    throw new HttpError(400, 'Incident resource is required');
+    throw new HttpError(400, "Incident resource is required");
   }
 
   return {
-    type: requireString(value, 'type', 'Incident resource type'),
-    key: requireString(value, 'key', 'Incident resource key'),
-    name: optionalNullableString(value, 'name', 'Incident resource name'),
+    type: requireString(value, "type", "Incident resource type"),
+    key: requireString(value, "key", "Incident resource key"),
+    name: optionalNullableString(value, "name", "Incident resource name"),
   };
 }
 
@@ -63,8 +92,8 @@ function parseEnum<T extends string>(
   allowed: readonly T[],
   label: string,
 ): T {
-  if (typeof value !== 'string' || !allowed.includes(value as T)) {
-    throw new HttpError(400, `${label} must be one of: ${allowed.join(', ')}`);
+  if (typeof value !== "string" || !allowed.includes(value as T)) {
+    throw new HttpError(400, `${label} must be one of: ${allowed.join(", ")}`);
   }
   return value as T;
 }
@@ -78,55 +107,68 @@ function requireIsoDate(value: string, label: string): string {
 
 export function parseAlertWebhook(payload: unknown): AlertWebhookDto {
   if (!isRecord(payload)) {
-    throw new HttpError(400, 'Alert webhook payload must be an object');
+    throw new HttpError(400, "Alert webhook payload must be an object");
   }
 
-  if (payload.event !== 'INCIDENT_ALERT') {
-    throw new HttpError(400, 'Event must be INCIDENT_ALERT');
+  if (payload.event !== "INCIDENT_ALERT") {
+    throw new HttpError(400, "Event must be INCIDENT_ALERT");
   }
 
   const kind = parseEnum<IncidentNotificationKind>(
     payload.kind,
     INCIDENT_NOTIFICATION_KINDS,
-    'Kind',
+    "Kind",
   );
 
   if (!isRecord(payload.incident)) {
-    throw new HttpError(400, 'Incident is required');
+    throw new HttpError(400, "Incident is required");
   }
 
   const incident = payload.incident;
   const source = incident.source;
   if (!isAlertSource(source)) {
-    throw new HttpError(400, 'Incident source must be NOMAD, CONSUL, or MINIO');
+    throw new HttpError(400, "Incident source must be NOMAD, CONSUL, or MINIO");
   }
 
   const reminderCount = incident.reminderCount;
   if (!Number.isInteger(reminderCount) || (reminderCount as number) < 0) {
-    throw new HttpError(400, 'Incident reminderCount must be a non-negative integer');
+    throw new HttpError(
+      400,
+      "Incident reminderCount must be a non-negative integer",
+    );
   }
 
   const openedAt = requireIsoDate(
-    requireString(incident, 'openedAt', 'Incident openedAt'),
-    'Incident openedAt',
+    requireString(incident, "openedAt", "Incident openedAt"),
+    "Incident openedAt",
   );
   const resolvedAtRaw = incident.resolvedAt;
   const resolvedAt =
-    resolvedAtRaw === null
+    resolvedAtRaw === undefined || resolvedAtRaw === null
       ? null
       : requireIsoDate(
-          requireString(incident, 'resolvedAt', 'Incident resolvedAt'),
-          'Incident resolvedAt',
+          requireString(incident, "resolvedAt", "Incident resolvedAt"),
+          "Incident resolvedAt",
         );
 
-  const status = parseEnum<IncidentStatus>(incident.status, INCIDENT_STATUSES, 'Incident status');
+  const status = parseEnum<IncidentStatus>(
+    incident.status,
+    INCIDENT_STATUSES,
+    "Incident status",
+  );
 
-  if (kind === 'RESOLVED') {
-    if (status !== 'RESOLVED' || resolvedAt === null) {
-      throw new HttpError(400, 'RESOLVED notification requires RESOLVED status and resolvedAt');
+  if (kind === "RESOLVED") {
+    if (status !== "RESOLVED" || resolvedAt === null) {
+      throw new HttpError(
+        400,
+        "RESOLVED notification requires RESOLVED status and resolvedAt",
+      );
     }
-  } else if (status !== 'OPEN' || resolvedAt !== null) {
-    throw new HttpError(400, `${kind} notification requires OPEN status and null resolvedAt`);
+  } else if (status !== "OPEN" || resolvedAt !== null) {
+    throw new HttpError(
+      400,
+      `${kind} notification requires OPEN status and null resolvedAt`,
+    );
   }
 
   const clusterIdRaw = incident.clusterId;
@@ -136,39 +178,71 @@ export function parseAlertWebhook(payload: unknown): AlertWebhookDto {
       : Number(clusterIdRaw);
 
   if (clusterId !== undefined && Number.isNaN(clusterId)) {
-    throw new HttpError(400, 'Incident clusterId must be numeric');
+    throw new HttpError(400, "Incident clusterId must be numeric");
   }
 
   return {
-    event: 'INCIDENT_ALERT',
+    event: "INCIDENT_ALERT",
     kind,
     incident: {
-      id: requireString(incident, 'id', 'Incident id'),
+      id: requireString(incident, "id", "Incident id"),
       status,
       source,
-      type: requireString(incident, 'type', 'Incident type'),
+      type: requireString(incident, "type", "Incident type"),
       severity: parseEnum<IncidentSeverity>(
         incident.severity,
         INCIDENT_SEVERITIES,
-        'Incident severity',
+        "Incident severity",
       ),
       clusterId,
-      clusterName: requireString(incident, 'clusterName', 'Incident clusterName'),
-      site: requireString(incident, 'site', 'Incident site'),
-      appName: requireString(incident, 'appName', 'Incident appName'),
-      env: requireString(incident, 'env', 'Incident env'),
+      clusterName: requireString(
+        incident,
+        "clusterName",
+        "Incident clusterName",
+      ),
+      site: requireString(incident, "site", "Incident site"),
+      appName: requireString(incident, "appName", "Incident appName"),
+      env: requireString(incident, "env", "Incident env"),
       resource: parseResource(incident.resource),
-      message: requireString(incident, 'message', 'Incident message'),
+      message: requireString(incident, "message", "Incident message"),
       openedAt,
       resolvedAt,
       reminderCount: reminderCount as number,
-      acknowledgedAt: parseNullableIsoDate(incident, 'acknowledgedAt', 'Incident acknowledgedAt'),
-      acknowledgedByUserName: optionalNullableString(incident, 'acknowledgedByUserName', 'Incident acknowledgedByUserName'),
-      acknowledgementNote: optionalNullableString(incident, 'acknowledgementNote', 'Incident acknowledgementNote'),
-      postponedAt: parseNullableIsoDate(incident, 'postponedAt', 'Incident postponedAt'),
-      postponedByUserName: optionalNullableString(incident, 'postponedByUserName', 'Incident postponedByUserName'),
-      postponeUntil: parseNullableIsoDate(incident, 'postponeUntil', 'Incident postponeUntil'),
-      postponeRemark: optionalNullableString(incident, 'postponeRemark', 'Incident postponeRemark'),
+      acknowledgedAt: parseOptionalNullableIsoDate(
+        incident,
+        "acknowledgedAt",
+        "Incident acknowledgedAt",
+      ),
+      acknowledgedByUserName: optionalNullableString(
+        incident,
+        "acknowledgedByUserName",
+        "Incident acknowledgedByUserName",
+      ),
+      acknowledgementNote: optionalNullableString(
+        incident,
+        "acknowledgementNote",
+        "Incident acknowledgementNote",
+      ),
+      postponedAt: parseOptionalNullableIsoDate(
+        incident,
+        "postponedAt",
+        "Incident postponedAt",
+      ),
+      postponedByUserName: optionalNullableString(
+        incident,
+        "postponedByUserName",
+        "Incident postponedByUserName",
+      ),
+      postponeUntil: parseOptionalNullableIsoDate(
+        incident,
+        "postponeUntil",
+        "Incident postponeUntil",
+      ),
+      postponeRemark: optionalNullableString(
+        incident,
+        "postponeRemark",
+        "Incident postponeRemark",
+      ),
     },
   };
 }
