@@ -33,7 +33,7 @@ function optionalNullableString(
   label: string,
 ): string | null {
   const value = candidate[field];
-  if (value === null) return null;
+  if (value === undefined || value === null) return null;
   if (typeof value !== 'string' || value.trim() === '') {
     throw new HttpError(400, `${label} must be a non-empty string or null`);
   }
@@ -129,6 +129,16 @@ export function parseAlertWebhook(payload: unknown): AlertWebhookDto {
     throw new HttpError(400, `${kind} notification requires OPEN status and null resolvedAt`);
   }
 
+  const clusterIdRaw = incident.clusterId;
+  const clusterId =
+    clusterIdRaw === undefined || clusterIdRaw === null
+      ? undefined
+      : Number(clusterIdRaw);
+
+  if (clusterId !== undefined && Number.isNaN(clusterId)) {
+    throw new HttpError(400, 'Incident clusterId must be numeric');
+  }
+
   return {
     event: 'INCIDENT_ALERT',
     kind,
@@ -142,7 +152,7 @@ export function parseAlertWebhook(payload: unknown): AlertWebhookDto {
         INCIDENT_SEVERITIES,
         'Incident severity',
       ),
-      clusterId: Number(incident.clusterId),
+      clusterId,
       clusterName: requireString(incident, 'clusterName', 'Incident clusterName'),
       site: requireString(incident, 'site', 'Incident site'),
       appName: requireString(incident, 'appName', 'Incident appName'),
