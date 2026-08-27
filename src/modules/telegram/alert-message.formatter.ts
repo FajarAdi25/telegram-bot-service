@@ -8,7 +8,7 @@ function escapeHtml(value: string): string {
 }
 
 function value(value: string | number | null | undefined): string {
-  return escapeHtml(value === null ? "-" : String(value));
+  return escapeHtml(value == null || value === "" ? "-" : String(value));
 }
 
 function formatDate(value: string | null | undefined): string {
