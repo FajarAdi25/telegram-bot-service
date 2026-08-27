@@ -12,7 +12,7 @@ RUN npm run build
 RUN npm prune --omit=dev
 
 FROM node:20-alpine AS runtime
-ARG APP_VERSION=1.2.0
+ARG APP_VERSION=1.3.0
 WORKDIR /app
 ENV NODE_ENV=production
 ENV APP_VERSION=${APP_VERSION}

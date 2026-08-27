@@ -4,6 +4,13 @@ All notable changes to Monitoring Telegram Bot Service are documented here.
 
 Versioning follows Semantic Versioning: `MAJOR.MINOR.PATCH`.
 
+## [1.3.0] - 2026-08-27
+
+### Changed
+- Separate Telegram message formatting for SSL certificate alerts from the existing incident alert format.
+- SSL alerts now show certificate-specific fields from `incident.contextJson` while preserving the existing ACK and POSTPONE sections.
+- Existing NOMAD, CONSUL, and MINIO incident message format remains unchanged.
+
 ## [1.2.0] - 2026-08-27
 
 Backward-compatible support for SSL certificate expiry alerts from Monitoring Service.

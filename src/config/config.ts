@@ -71,7 +71,7 @@ export interface AppConfig {
 
 export function loadConfig(): AppConfig {
   return {
-    appVersion: optional('APP_VERSION', '1.2.0'),
+    appVersion: optional('APP_VERSION', '1.3.0'),
     port: portValue('PORT', 3001),
     telegram: {
       botToken: required('TELEGRAM_BOT_TOKEN'),

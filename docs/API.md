@@ -1,4 +1,4 @@
-# Telegram Bot Service Integration Surface - v1.2.0
+# Telegram Bot Service Integration Surface - v1.3.0
 
 ## 1. Monitoring Service -> Telegram Bot Service
 
@@ -40,7 +40,7 @@ incident.id + kind + reminderCount
 
 ## 2. Telegram -> Telegram Bot Service
 
-v1.2.0 **tidak menyediakan HTTP endpoint Telegram webhook**.
+v1.3.0 **tidak menyediakan HTTP endpoint Telegram webhook**.
 
 Incoming Telegram update diterima melalui long polling Telegram Bot API `getUpdates`.
 

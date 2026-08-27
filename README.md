@@ -2,12 +2,12 @@
 
 ## Release
 
-Current stable service version: **v1.2.0**.
+Current stable service version: **v1.3.0**.
 
 Docker image:
 
 ```text
-monitoring-telegram-bot:1.2.0
+monitoring-telegram-bot:1.3.0
 ```
 
 Version history is maintained in `CHANGELOG.md`. Versioning rules are documented in `docs/VERSIONING.md`.
@@ -16,7 +16,7 @@ Telegram Bot Service menerima incident notification dari Monitoring Service, men
 
 Baseline contract: **Telegram Bot Service Integration API v1.0**.
 
-## v1.2.0 transport architecture
+## v1.3.0 transport architecture
 
 Telegram incoming update tidak lagi memakai public webhook.
 
@@ -112,7 +112,7 @@ src/
 Copy `.env.example` menjadi `.env`.
 
 ```env
-APP_VERSION=1.2.0
+APP_VERSION=1.3.0
 PORT=3001
 
 TELEGRAM_BOT_TOKEN=
@@ -204,7 +204,7 @@ npm run dev
 Saat startup, log normal mencakup:
 
 ```text
-Monitoring Telegram Bot v1.2.0 listening on port 3001
+Monitoring Telegram Bot v1.3.0 listening on port 3001
 Telegram long polling started
 ```
 
@@ -221,7 +221,7 @@ Expected:
   "status": "ok",
   "database": "up",
   "telegramPolling": "up",
-  "version": "1.2.0"
+  "version": "1.3.0"
 }
 ```
 
@@ -371,7 +371,7 @@ Untuk deployment yang ingin membuang update lama secara eksplisit, lakukan sekal
 curl "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/deleteWebhook?drop_pending_updates=true"
 ```
 
-Jangan menjalankan `setWebhook` untuk v1.2.0.
+Jangan menjalankan `setWebhook` untuk v1.3.0.
 
 ### Single instance requirement
 
@@ -466,7 +466,7 @@ npm run build
 ## Production Notes
 
 - outbound HTTPS ke `api.telegram.org` wajib tersedia;
-- public inbound HTTPS tidak diperlukan untuk Telegram karena v1.2.0 memakai polling;
+- public inbound HTTPS tidak diperlukan untuk Telegram karena v1.3.0 memakai polling;
 - jalankan hanya satu polling instance untuk satu bot token;
 - simpan Bot Token dan Basic Auth credentials sebagai secret;
 - jalankan migration sebelum application start;
