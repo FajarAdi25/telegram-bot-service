@@ -1,16 +1,25 @@
-# Telegram Bot Service Integration Surface - v1.1.1
+# Telegram Bot Service Integration Surface - v1.2.0
 
 ## 1. Monitoring Service -> Telegram Bot Service
 
 ### POST `/webhooks/alerts`
 
-Menerima `INCIDENT_ALERT` dengan kind:
+Menerima event:
+
+```text
+INCIDENT_ALERT
+SSL_EXPIRING_ALERT
+```
+
+Kind yang didukung:
 
 ```text
 INITIAL
 REMINDER
 RESOLVED
 ```
+
+`SSL_EXPIRING_ALERT` menggunakan `incident.source = SSL` dan membawa `incident.contextJson` berisi metadata sertifikat SSL.
 
 Authentication inbound belum digunakan pada current Monitoring Service contract.
 
@@ -31,7 +40,7 @@ incident.id + kind + reminderCount
 
 ## 2. Telegram -> Telegram Bot Service
 
-v1.1.1 **tidak menyediakan HTTP endpoint Telegram webhook**.
+v1.2.0 **tidak menyediakan HTTP endpoint Telegram webhook**.
 
 Incoming Telegram update diterima melalui long polling Telegram Bot API `getUpdates`.
 

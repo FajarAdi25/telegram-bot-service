@@ -2,12 +2,12 @@
 
 ## Release
 
-Current stable service version: **v1.1.1**.
+Current stable service version: **v1.2.0**.
 
 Docker image:
 
 ```text
-monitoring-telegram-bot:1.1.1
+monitoring-telegram-bot:1.2.0
 ```
 
 Version history is maintained in `CHANGELOG.md`. Versioning rules are documented in `docs/VERSIONING.md`.
@@ -16,7 +16,7 @@ Telegram Bot Service menerima incident notification dari Monitoring Service, men
 
 Baseline contract: **Telegram Bot Service Integration API v1.0**.
 
-## v1.1.1 transport architecture
+## v1.2.0 transport architecture
 
 Telegram incoming update tidak lagi memakai public webhook.
 
@@ -54,7 +54,7 @@ Saat startup Bot menjalankan `deleteWebhook` tanpa `drop_pending_updates`, lalu 
 
 Service ini menangani:
 
-- menerima webhook `INCIDENT_ALERT` dari Monitoring Service;
+- menerima webhook `INCIDENT_ALERT` dan `SSL_EXPIRING_ALERT` dari Monitoring Service;
 - menerima `INITIAL`, `REMINDER`, dan `RESOLVED`;
 - route alert berdasarkan `incident.source` ke Telegram Topic;
 - membuat message baru untuk setiap event;
@@ -112,7 +112,7 @@ src/
 Copy `.env.example` menjadi `.env`.
 
 ```env
-APP_VERSION=1.1.1
+APP_VERSION=1.2.0
 PORT=3001
 
 TELEGRAM_BOT_TOKEN=
@@ -120,6 +120,7 @@ TELEGRAM_CHAT_ID=
 TELEGRAM_TOPIC_NOMAD_ID=
 TELEGRAM_TOPIC_CONSUL_ID=
 TELEGRAM_TOPIC_MINIO_ID=
+TELEGRAM_TOPIC_SSL_ID=
 
 MONITORING_SERVICE_BASE_URL=http://localhost:3000
 MONITORING_AUTH_USERNAME=
@@ -203,7 +204,7 @@ npm run dev
 Saat startup, log normal mencakup:
 
 ```text
-Monitoring Telegram Bot v1.1.1 listening on port 3001
+Monitoring Telegram Bot v1.2.0 listening on port 3001
 Telegram long polling started
 ```
 
@@ -220,7 +221,7 @@ Expected:
   "status": "ok",
   "database": "up",
   "telegramPolling": "up",
-  "version": "1.1.1"
+  "version": "1.2.0"
 }
 ```
 
@@ -267,15 +268,60 @@ Response normal:
 }
 ```
 
+SSL expiry alert menggunakan event `SSL_EXPIRING_ALERT`, `incident.source = SSL`, dan `incident.contextJson`:
+
+```json
+{
+  "event": "SSL_EXPIRING_ALERT",
+  "kind": "INITIAL",
+  "incident": {
+    "id": "INC-1787810000000-A1B2C3",
+    "status": "OPEN",
+    "source": "SSL",
+    "type": "SSL_CERTIFICATE_EXPIRING",
+    "severity": "WARNING",
+    "resource": {
+      "type": "CLUSTER_SSL_CERTIFICATE",
+      "key": "1",
+      "name": "cluster-production"
+    },
+    "message": "SSL certificate for cluster cluster-production expires on 2026-09-15T00:00:00.000Z (19 day(s) remaining).",
+    "contextJson": {
+      "endpoint": "https://cluster.example",
+      "validFrom": "2026-06-01T00:00:00.000Z",
+      "expiresAt": "2026-09-15T00:00:00.000Z",
+      "daysRemaining": 19,
+      "subjectCn": "cluster.example",
+      "issuerCn": "Example CA",
+      "certificateFingerprint256": "..."
+    },
+    "clusterName": "cluster-production",
+    "site": "DC-JAKARTA",
+    "appName": "my-app",
+    "env": "PRODUCTION",
+    "openedAt": "2026-08-27T06:00:00.000Z",
+    "resolvedAt": null,
+    "reminderCount": 0,
+    "acknowledgement": {
+      "status": false
+    },
+    "postpone": {
+      "status": false
+    }
+  }
+}
+```
+
 ## Telegram Topic Routing
 
 ```text
 NOMAD  -> TELEGRAM_TOPIC_NOMAD_ID
 CONSUL -> TELEGRAM_TOPIC_CONSUL_ID
 MINIO  -> TELEGRAM_TOPIC_MINIO_ID
+SSL    -> TELEGRAM_TOPIC_SSL_ID
 ```
 
-Current Monitoring Service MVP mengirim `NOMAD`. Routing `CONSUL` dan `MINIO` tetap tersedia.
+`TELEGRAM_TOPIC_SSL_ID` dapat dikosongkan jika deployment belum memakai alert SSL. Jika alert dengan `incident.source = SSL` diterima, topic SSL harus sudah dikonfigurasi.
 
 ## Notification Behavior
 
@@ -325,7 +371,7 @@ Untuk deployment yang ingin membuang update lama secara eksplisit, lakukan sekal
 curl "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/deleteWebhook?drop_pending_updates=true"
 ```
 
-Jangan menjalankan `setWebhook` untuk v1.1.1.
+Jangan menjalankan `setWebhook` untuk v1.2.0.
 
 ### Single instance requirement
 
@@ -420,7 +466,7 @@ npm run build
 ## Production Notes
 
 - outbound HTTPS ke `api.telegram.org` wajib tersedia;
-- public inbound HTTPS tidak diperlukan untuk Telegram karena v1.1.1 memakai polling;
+- public inbound HTTPS tidak diperlukan untuk Telegram karena v1.2.0 memakai polling;
 - jalankan hanya satu polling instance untuk satu bot token;
 - simpan Bot Token dan Basic Auth credentials sebagai secret;
 - jalankan migration sebelum application start;

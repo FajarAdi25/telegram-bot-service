@@ -15,7 +15,7 @@ Examples:
 ## Current stable version
 
 ```text
-v1.1.1
+v1.2.0
 ```
 
 The authoritative version must be kept consistent in:
@@ -28,7 +28,7 @@ The authoritative version must be kept consistent in:
 Docker images are tagged using the application version:
 
 ```text
-monitoring-telegram-bot:1.1.1
+monitoring-telegram-bot:1.2.0
 ```
 
 Do not use `latest` as the deployment reference when promoting a known release.

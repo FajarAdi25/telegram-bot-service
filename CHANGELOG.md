@@ -4,6 +4,25 @@ All notable changes to Monitoring Telegram Bot Service are documented here.
 
 Versioning follows Semantic Versioning: `MAJOR.MINOR.PATCH`.
 
+## [1.2.0] - 2026-08-27
+
+Backward-compatible support for SSL certificate expiry alerts from Monitoring Service.
+
+### Added
+
+- Accept `SSL_EXPIRING_ALERT` webhook events.
+- Accept `SSL` as an incident source.
+- Parse SSL `incident.contextJson` certificate metadata from Monitoring Service.
+- Route `SSL` incidents to `TELEGRAM_TOPIC_SSL_ID`.
+- Keep `TELEGRAM_TOPIC_SSL_ID` optional at startup so deployments without SSL routing continue to start. SSL delivery fails until the topic ID is configured.
+
+### Unchanged
+
+- Existing `INCIDENT_ALERT` handling for NOMAD, CONSUL, and MINIO.
+- `INITIAL`, `REMINDER`, and `RESOLVED` notification behavior.
+- ACK and POSTPONE interaction flow.
+- Persistent webhook deduplication key: `incident.id + kind + reminderCount`.
+
 ## [1.1.1] - 2026-08-18
 
 Patch release for Telegram ACK/POSTPONE interaction UX.

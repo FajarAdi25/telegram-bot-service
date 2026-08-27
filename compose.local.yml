@@ -1,23 +1,24 @@
 services:
   telegram-bot-service:
-    image: monitoring-telegram-bot:${APP_VERSION:-1.1.1}
+    image: monitoring-telegram-bot:${APP_VERSION:-1.2.0}
     build:
       context: .
       dockerfile: Dockerfile
       args:
-        APP_VERSION: ${APP_VERSION:-1.1.1}
+        APP_VERSION: ${APP_VERSION:-1.2.0}
     container_name: monitoring-telegram-bot
     restart: unless-stopped
     ports:
       - "${APP_HOST_PORT:-3004}:${APP_PORT:-3004}"
     environment:
-      APP_VERSION: ${APP_VERSION:-1.1.1}
+      APP_VERSION: ${APP_VERSION:-1.2.0}
       PORT: ${APP_PORT:-3004}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
       TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID}
       TELEGRAM_TOPIC_NOMAD_ID: ${TELEGRAM_TOPIC_NOMAD_ID}
       TELEGRAM_TOPIC_CONSUL_ID: ${TELEGRAM_TOPIC_CONSUL_ID}
       TELEGRAM_TOPIC_MINIO_ID: ${TELEGRAM_TOPIC_MINIO_ID}
+      TELEGRAM_TOPIC_SSL_ID: ${TELEGRAM_TOPIC_SSL_ID:-}
       MONITORING_SERVICE_BASE_URL: ${MONITORING_SERVICE_BASE_URL}
       MONITORING_AUTH_USERNAME: ${MONITORING_AUTH_USERNAME}
       MONITORING_AUTH_PASSWORD: ${MONITORING_AUTH_PASSWORD}

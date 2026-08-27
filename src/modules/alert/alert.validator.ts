@@ -1,14 +1,17 @@
 import { HttpError } from "../../shared/errors/http-error.js";
 import { isAlertSource } from "../../shared/types/alert-source.js";
 import {
+  ALERT_EVENTS,
   INCIDENT_NOTIFICATION_KINDS,
   INCIDENT_SEVERITIES,
   INCIDENT_STATUSES,
+  type AlertEvent,
   type AlertWebhookDto,
   type IncidentNotificationKind,
   type IncidentResourceDto,
   type IncidentSeverity,
   type IncidentStatus,
+  type SslContextJsonDto,
 } from "./dto/alert-webhook.dto.js";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -141,6 +144,38 @@ function parseOptionalNullableIsoDate(
   return requireIsoDate(requireString(candidate, field, label), label);
 }
 
+
+function parseSslContextJson(value: unknown): SslContextJsonDto {
+  if (!isRecord(value)) {
+    throw new HttpError(400, "Incident contextJson is required for SSL alert");
+  }
+
+  const daysRemaining = value.daysRemaining;
+  if (!Number.isInteger(daysRemaining)) {
+    throw new HttpError(400, "Incident contextJson daysRemaining must be an integer");
+  }
+
+  return {
+    endpoint: requireString(value, "endpoint", "Incident contextJson endpoint"),
+    validFrom: requireIsoDate(
+      requireString(value, "validFrom", "Incident contextJson validFrom"),
+      "Incident contextJson validFrom",
+    ),
+    expiresAt: requireIsoDate(
+      requireString(value, "expiresAt", "Incident contextJson expiresAt"),
+      "Incident contextJson expiresAt",
+    ),
+    daysRemaining: daysRemaining as number,
+    subjectCn: requireString(value, "subjectCn", "Incident contextJson subjectCn"),
+    issuerCn: requireString(value, "issuerCn", "Incident contextJson issuerCn"),
+    certificateFingerprint256: requireString(
+      value,
+      "certificateFingerprint256",
+      "Incident contextJson certificateFingerprint256",
+    ),
+  };
+}
+
 function parseResource(value: unknown): IncidentResourceDto {
   if (!isRecord(value)) {
     throw new HttpError(400, "Incident resource is required");
@@ -176,9 +211,7 @@ export function parseAlertWebhook(payload: unknown): AlertWebhookDto {
     throw new HttpError(400, "Alert webhook payload must be an object");
   }
 
-  if (payload.event !== "INCIDENT_ALERT") {
-    throw new HttpError(400, "Event must be INCIDENT_ALERT");
-  }
+  const event = parseEnum<AlertEvent>(payload.event, ALERT_EVENTS, "Event");
 
   const kind = parseEnum<IncidentNotificationKind>(
     payload.kind,
@@ -193,7 +226,14 @@ export function parseAlertWebhook(payload: unknown): AlertWebhookDto {
   const incident = payload.incident;
   const source = incident.source;
   if (!isAlertSource(source)) {
-    throw new HttpError(400, "Incident source must be NOMAD, CONSUL, or MINIO");
+    throw new HttpError(400, "Incident source must be NOMAD, CONSUL, MINIO, or SSL");
+  }
+
+  if (event === "SSL_EXPIRING_ALERT" && source !== "SSL") {
+    throw new HttpError(400, "SSL_EXPIRING_ALERT requires SSL incident source");
+  }
+  if (source === "SSL" && event !== "SSL_EXPIRING_ALERT") {
+    throw new HttpError(400, "SSL incident source requires SSL_EXPIRING_ALERT event");
   }
 
   const reminderCount = incident.reminderCount;
@@ -248,7 +288,7 @@ export function parseAlertWebhook(payload: unknown): AlertWebhookDto {
   }
 
   return {
-    event: "INCIDENT_ALERT",
+    event,
     kind,
     incident: {
       id: requireString(incident, "id", "Incident id"),
@@ -271,6 +311,9 @@ export function parseAlertWebhook(payload: unknown): AlertWebhookDto {
       env: requireString(incident, "env", "Incident env"),
       resource: parseResource(incident.resource),
       message: requireString(incident, "message", "Incident message"),
+      ...(source === "SSL"
+        ? { contextJson: parseSslContextJson(incident.contextJson) }
+        : {}),
       openedAt,
       resolvedAt,
       reminderCount: reminderCount as number,

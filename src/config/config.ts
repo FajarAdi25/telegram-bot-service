@@ -22,6 +22,17 @@ function numberValue(name: string, fallback?: number): number {
   return value;
 }
 
+function optionalNumberValue(name: string): number | undefined {
+  const raw = process.env[name]?.trim();
+  if (!raw) return undefined;
+
+  const value = Number(raw);
+  if (!Number.isInteger(value)) {
+    throw new Error(`Environment variable ${name} must be an integer`);
+  }
+  return value;
+}
+
 function portValue(name: string, fallback: number): number {
   const value = numberValue(name, fallback);
   if (value <= 0 || value > 65535) {
@@ -40,6 +51,7 @@ export interface AppConfig {
       NOMAD: number;
       CONSUL: number;
       MINIO: number;
+      SSL?: number;
     };
   };
   monitoringService: {
@@ -59,7 +71,7 @@ export interface AppConfig {
 
 export function loadConfig(): AppConfig {
   return {
-    appVersion: optional('APP_VERSION', '1.1.1'),
+    appVersion: optional('APP_VERSION', '1.2.0'),
     port: portValue('PORT', 3001),
     telegram: {
       botToken: required('TELEGRAM_BOT_TOKEN'),
@@ -68,6 +80,7 @@ export function loadConfig(): AppConfig {
         NOMAD: numberValue('TELEGRAM_TOPIC_NOMAD_ID'),
         CONSUL: numberValue('TELEGRAM_TOPIC_CONSUL_ID'),
         MINIO: numberValue('TELEGRAM_TOPIC_MINIO_ID'),
+        SSL: optionalNumberValue('TELEGRAM_TOPIC_SSL_ID'),
       },
     },
     monitoringService: {

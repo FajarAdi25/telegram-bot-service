@@ -14,10 +14,23 @@ export type IncidentStatus = (typeof INCIDENT_STATUSES)[number];
 export const INCIDENT_SEVERITIES = ["CRITICAL", "MAJOR", "WARNING"] as const;
 export type IncidentSeverity = (typeof INCIDENT_SEVERITIES)[number];
 
+export const ALERT_EVENTS = ["INCIDENT_ALERT", "SSL_EXPIRING_ALERT"] as const;
+export type AlertEvent = (typeof ALERT_EVENTS)[number];
+
 export interface IncidentResourceDto {
   type: string;
   key: string;
   name: string | null;
+}
+
+export interface SslContextJsonDto {
+  endpoint: string;
+  validFrom: string;
+  expiresAt: string;
+  daysRemaining: number;
+  subjectCn: string;
+  issuerCn: string;
+  certificateFingerprint256: string;
 }
 
 export interface IncidentDto {
@@ -33,6 +46,7 @@ export interface IncidentDto {
   env?: string;
   resource: IncidentResourceDto;
   message: string;
+  contextJson?: SslContextJsonDto;
   openedAt: string;
   resolvedAt: string | null;
   reminderCount: number;
@@ -67,7 +81,7 @@ export interface IncidentDto {
 }
 
 export interface AlertWebhookDto {
-  event: "INCIDENT_ALERT";
+  event: AlertEvent;
   kind: IncidentNotificationKind;
   incident: IncidentDto;
 }

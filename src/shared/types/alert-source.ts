@@ -1,4 +1,4 @@
-export const ALERT_SOURCES = ['NOMAD', 'CONSUL', 'MINIO'] as const;
+export const ALERT_SOURCES = ['NOMAD', 'CONSUL', 'MINIO', 'SSL'] as const;
 
 export type AlertSource = (typeof ALERT_SOURCES)[number];
 
