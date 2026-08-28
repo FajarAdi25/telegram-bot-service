@@ -1,20 +1,20 @@
 import {
   MonitoringServiceClient,
   MonitoringServiceError,
-} from '../../clients/monitoring-service.client.js';
-import { IncidentStateRepository } from '../../repositories/incident-state.repository.js';
+} from "../../clients/monitoring-service.client.js";
+import { IncidentStateRepository } from "../../repositories/incident-state.repository.js";
 import {
   TelegramActionSessionRepository,
   type TelegramActionSession,
-} from '../../repositories/telegram-action-session.repository.js';
-import { HttpError } from '../../shared/errors/http-error.js';
-import { parsePostponeTime } from '../postpone/postpone-time.parser.js';
-import { TelegramClient } from './telegram.client.js';
+} from "../../repositories/telegram-action-session.repository.js";
+import { HttpError } from "../../shared/errors/http-error.js";
+import { parsePostponeTime } from "../postpone/postpone-time.parser.js";
+import { TelegramClient } from "./telegram.client.js";
 import {
   toUserIdentity,
   type TelegramMessage,
   type TelegramUserIdentity,
-} from './telegram.types.js';
+} from "./telegram.types.js";
 
 export class TelegramActionInputService {
   constructor(
@@ -43,12 +43,12 @@ export class TelegramActionInputService {
     );
     if (!session) return;
 
-    if (session.stage === 'ACK_NOTE') {
+    if (session.stage === "ACK_NOTE") {
       await this.handleAckNote(message, user, session);
       return;
     }
 
-    if (session.stage === 'POSTPONE_TIME') {
+    if (session.stage === "POSTPONE_TIME") {
       await this.handlePostponeTime(message, session);
       return;
     }
@@ -69,7 +69,8 @@ export class TelegramActionInputService {
         note,
       );
 
-      const acknowledgedBy = monitoringUserIdentity(result.acknowledgedBy) ?? user;
+      const acknowledgedBy =
+        monitoringUserIdentity(result.acknowledgedBy) ?? user;
       await this.incidentStateRepository.markAcknowledged(
         session.incidentId,
         acknowledgedBy,
@@ -77,8 +78,13 @@ export class TelegramActionInputService {
       await this.actionSessionRepository.deleteById(session.id);
 
       const buttons =
-        result.status === 'OPEN'
-          ? [{ text: 'Postpone', callback_data: `postpone:${session.incidentId}` }]
+        result.status === "OPEN"
+          ? [
+              {
+                text: "Postpone",
+                callback_data: `postpone:${session.incidentId}`,
+              },
+            ]
           : [];
       await this.telegramClient.editMessageButtons(
         session.chatId,
@@ -90,15 +96,21 @@ export class TelegramActionInputService {
         chatId: session.chatId,
         topicId: session.topicId,
         text: [
-          '<b>✅ ACK berhasil</b>',
+          "<b>✅ ACK Successful</b>",
           `Incident: <code>${escapeHtml(session.incidentId)}</code>`,
           `By: ${formatUser(acknowledgedBy)}`,
-          `Note: ${escapeHtml(result.acknowledgementNote ?? note ?? '-')}`,
-        ].join('\n'),
+          `Note: ${escapeHtml(result.acknowledgementNote ?? note ?? "-")}`,
+        ].join("\n"),
         replyToMessageId: session.sourceMessageId,
       });
     } catch (error) {
-      await this.sendActionError(session.chatId, session.topicId, message.message_id, 'ACK', error);
+      await this.sendActionError(
+        session.chatId,
+        session.topicId,
+        message.message_id,
+        "ACK",
+        error,
+      );
     }
   }
 
@@ -112,20 +124,20 @@ export class TelegramActionInputService {
         chatId: session.chatId,
         topicId: session.topicId,
         text: [
-          '<b>Postpone Remark</b>',
+          "<b>Postpone Remark</b>",
           `Incident: <code>${escapeHtml(session.incidentId)}</code>`,
           `Until: <code>${escapeHtml(parsed.display)}</code>`,
-          '',
-          'Masukkan remark POSTPONE.',
-          'Balas <code>-</code> jika tidak ingin mengisi remark.',
-        ].join('\n'),
+          "",
+          "Input remark POSTPONE.",
+          "Reply <code>-</code> if you don't want to input remark.",
+        ].join("\n"),
         replyToMessageId: message.message_id,
         forceReply: true,
       });
 
       await this.actionSessionRepository.replacePrompt(
         session.id,
-        'POSTPONE_REMARK',
+        "POSTPONE_REMARK",
         prompt.message_id,
         parsed.iso,
         parsed.display,
@@ -136,18 +148,18 @@ export class TelegramActionInputService {
         topicId: session.topicId,
         text: [
           postponeErrorMessage(error),
-          '',
-          'Coba lagi dengan format:',
-          '<code>DD-MM-YYYY HH:mm</code>',
-          'Timezone: Asia/Jakarta (WIB)',
-        ].join('\n'),
+          "",
+          "Try again with format:",
+          "<code>DD-MM-YYYY HH:mm</code>",
+          "Timezone: Asia/Jakarta (WIB)",
+        ].join("\n"),
         replyToMessageId: message.message_id,
         forceReply: true,
       });
 
       await this.actionSessionRepository.replacePrompt(
         session.id,
-        'POSTPONE_TIME',
+        "POSTPONE_TIME",
         prompt.message_id,
       );
     }
@@ -163,7 +175,7 @@ export class TelegramActionInputService {
       await this.telegramClient.sendMessage({
         chatId: session.chatId,
         topicId: session.topicId,
-        text: 'Session POSTPONE tidak valid. Silakan klik tombol Postpone lagi.',
+        text: "Session POSTPONE is invalid. Please click the Postpone button again.",
         replyToMessageId: message.message_id,
       });
       return;
@@ -185,23 +197,26 @@ export class TelegramActionInputService {
         chatId: session.chatId,
         topicId: session.topicId,
         text: [
-          '<b>✅ POSTPONE berhasil</b>',
+          "<b>✅ POSTPONE Successful</b>",
           `Incident: <code>${escapeHtml(session.incidentId)}</code>`,
           `Until: <code>${escapeHtml(session.postponeDisplay)}</code>`,
           `By: ${formatUser(postponedBy)}`,
-          `Remark: ${escapeHtml(result.postponeRemark ?? remark ?? '-')}`,
-        ].join('\n'),
+          `Remark: ${escapeHtml(result.postponeRemark ?? remark ?? "-")}`,
+        ].join("\n"),
         replyToMessageId: session.sourceMessageId,
       });
     } catch (error) {
-      if (error instanceof MonitoringServiceError && error.code === 'INCIDENT_NOT_OPEN') {
+      if (
+        error instanceof MonitoringServiceError &&
+        error.code === "INCIDENT_NOT_OPEN"
+      ) {
         await this.actionSessionRepository.deleteById(session.id);
       }
       await this.sendActionError(
         session.chatId,
         session.topicId,
         message.message_id,
-        'POSTPONE',
+        "POSTPONE",
         error,
       );
     }
@@ -211,13 +226,13 @@ export class TelegramActionInputService {
     chatId: string,
     topicId: number,
     replyToMessageId: number,
-    action: 'ACK' | 'POSTPONE',
+    action: "ACK" | "POSTPONE",
     error: unknown,
   ): Promise<void> {
     await this.telegramClient.sendMessage({
       chatId,
       topicId,
-      text: `<b>❌ ${action} gagal</b>\n${actionErrorMessage(error)}`,
+      text: `<b>❌ ${action} Failed</b>\n${actionErrorMessage(error)}`,
       replyToMessageId,
     });
   }
@@ -225,7 +240,7 @@ export class TelegramActionInputService {
 
 function optionalText(value: string): string | undefined {
   const text = value.trim();
-  if (!text || text === '-') return undefined;
+  if (!text || text === "-") return undefined;
   return text;
 }
 
@@ -247,7 +262,7 @@ function monitoringUserIdentity(
 }
 
 function formatUser(user: TelegramUserIdentity): string {
-  const username = user.username ? ` (@${escapeHtml(user.username)})` : '';
+  const username = user.username ? ` (@${escapeHtml(user.username)})` : "";
   return `${escapeHtml(user.name)}${username}`;
 }
 
@@ -258,23 +273,24 @@ function postponeErrorMessage(error: unknown): string {
 
 function actionErrorMessage(error: unknown): string {
   if (error instanceof MonitoringServiceError) {
-    if (error.code === 'INVALID_POSTPONE_UNTIL') {
-      return 'Waktu postpone ditolak Monitoring Service. Pastikan waktunya masih di masa depan.';
+    if (error.code === "INVALID_POSTPONE_UNTIL") {
+      return "Postpone time rejected by Monitoring Service. Please make sure the time is still in the future.";
     }
-    if (error.code === 'INCIDENT_NOT_OPEN') return 'Incident sudah tidak OPEN.';
-    if (error.code === 'INCIDENT_NOT_FOUND') return 'Incident tidak ditemukan.';
-    if (error.code === 'UNAUTHORIZED_SERVICE') return 'Service authentication gagal.';
+    if (error.code === "INCIDENT_NOT_OPEN") return "Incident is not OPEN.";
+    if (error.code === "INCIDENT_NOT_FOUND") return "Incident not found.";
+    if (error.code === "UNAUTHORIZED_SERVICE")
+      return "Service authentication failed.";
     return escapeHtml(error.message);
   }
 
   if (error instanceof HttpError) return escapeHtml(error.message);
   console.error(error);
-  return 'Action gagal diproses.';
+  return "Action failed to process.";
 }
 
 function escapeHtml(value: string): string {
   return value
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;');
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
 }
