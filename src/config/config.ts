@@ -59,6 +59,10 @@ export interface AppConfig {
     username: string;
     password: string;
   };
+  gemini: {
+    apiKey: string;
+    model: string;
+  };
   mysql: {
     host: string;
     port: number;
@@ -87,6 +91,10 @@ export function loadConfig(): AppConfig {
       baseUrl: required('MONITORING_SERVICE_BASE_URL').replace(/\/$/, ''),
       username: required('MONITORING_AUTH_USERNAME'),
       password: required('MONITORING_AUTH_PASSWORD'),
+    },
+    gemini: {
+      apiKey: required('GEMINI_API_KEY'),
+      model: optional('GEMINI_MODEL', 'gemini-3.7-flash'),
     },
     mysql: {
       host: required('MYSQL_HOST'),

@@ -4,6 +4,19 @@ All notable changes to Monitoring Telegram Bot Service are documented here.
 
 Versioning follows Semantic Versioning: `MAJOR.MINOR.PATCH`.
 
+## [1.4.0] - 2026-08-31
+
+### Added
+- Add read-only AI Quick Chat for direct Telegram text messages using Gemini `gemini-3.7-flash`.
+- Add Gemini read-only function routing for incidents, server infrastructure summary, Nomad nodes, allocations, drivers, blocked evaluations, and SSL certificates.
+- Add Monitoring Service GET integrations required by AI Quick Chat.
+- Preserve existing ACK and POSTPONE reply flows by handling pending action sessions before Quick Chat.
+- Add `GEMINI_API_KEY` and optional `GEMINI_MODEL` deployment configuration.
+
+### Read-only scope
+- Quick Chat does not expose ACK, POSTPONE, manual Nomad pull, or other write actions to Gemini.
+- Monitoring Service remains the source of truth for live monitoring data.
+
 ## [1.3.0] - 2026-08-27
 
 ### Changed

@@ -4,3 +4,5 @@ dist/
 .DS_Store
 .env.docker.local
 .env.docker.dev
+docs
+test/

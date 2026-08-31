@@ -1,4 +1,5 @@
 import { setTimeout as sleep } from 'node:timers/promises';
+import type { QuickChatService } from '../quick-chat/quick-chat.service.js';
 import type { TelegramActionInputService } from './telegram-action-input.service.js';
 import type { TelegramCallbackService } from './telegram-callback.service.js';
 import type { TelegramClient } from './telegram.client.js';
@@ -17,6 +18,7 @@ export class TelegramPollingService {
     private readonly telegramClient: Pick<TelegramClient, 'deleteWebhook' | 'getUpdates'>,
     private readonly callbackService: Pick<TelegramCallbackService, 'handle'>,
     private readonly actionInputService: Pick<TelegramActionInputService, 'handle'>,
+    private readonly quickChatService: Pick<QuickChatService, 'handle'>,
   ) {}
 
   async start(): Promise<void> {
@@ -87,7 +89,10 @@ export class TelegramPollingService {
     }
 
     if (update.message) {
-      await this.actionInputService.handle(update.message);
+      const handledAction = await this.actionInputService.handle(update.message);
+      if (handledAction) return;
+
+      await this.quickChatService.handle(update.message);
     }
   }
 }

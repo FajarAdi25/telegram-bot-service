@@ -24,14 +24,14 @@ export class TelegramActionInputService {
     private readonly telegramClient: TelegramClient,
   ) {}
 
-  async handle(message: TelegramMessage): Promise<void> {
+  async handle(message: TelegramMessage): Promise<boolean> {
     if (
       !message.from ||
       !message.text ||
       message.message_thread_id === undefined ||
       message.reply_to_message?.message_id === undefined
     ) {
-      return;
+      return false;
     }
 
     const user = toUserIdentity(message.from);
@@ -41,19 +41,20 @@ export class TelegramActionInputService {
       message.message_thread_id,
       message.reply_to_message.message_id,
     );
-    if (!session) return;
+    if (!session) return false;
 
     if (session.stage === "ACK_NOTE") {
       await this.handleAckNote(message, user, session);
-      return;
+      return true;
     }
 
     if (session.stage === "POSTPONE_TIME") {
       await this.handlePostponeTime(message, session);
-      return;
+      return true;
     }
 
     await this.handlePostponeRemark(message, user, session);
+    return true;
   }
 
   private async handleAckNote(

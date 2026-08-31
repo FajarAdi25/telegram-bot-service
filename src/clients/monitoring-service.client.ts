@@ -14,6 +14,11 @@ interface MonitoringErrorEnvelope {
   };
 }
 
+interface SuccessEnvelope<T> {
+  success: true;
+  data: T;
+}
+
 interface AcknowledgeResponse {
   success: true;
   data: {
@@ -47,6 +52,9 @@ interface PostponeResponse {
     nextNotificationAt?: string;
   };
 }
+
+type QueryValue = string | number | boolean | undefined;
+type QueryParams = Record<string, QueryValue>;
 
 export class MonitoringServiceError extends Error {
   constructor(
@@ -100,6 +108,80 @@ export class MonitoringServiceClient {
     return response.data;
   }
 
+  async listIncidents(query: QueryParams = {}): Promise<unknown> {
+    return this.getData('/api/v1/incidents', query);
+  }
+
+  async getIncident(incidentId: string): Promise<unknown> {
+    return this.getData(`/api/v1/incidents/${encodeURIComponent(incidentId)}`);
+  }
+
+  async getDashboardOverview(query: QueryParams = {}): Promise<unknown> {
+    return this.getData('/api/v1/dashboard/overview', query);
+  }
+
+  async getDashboardHealth(query: QueryParams = {}): Promise<unknown> {
+    return this.getData('/api/v1/dashboard/health', query);
+  }
+
+  async getNomadNodes(cluster?: string): Promise<unknown> {
+    return this.getData('/api/v1/nomad/nodes', { cluster });
+  }
+
+  async getNomadNode(nodeId: string, cluster?: string): Promise<unknown> {
+    return this.getData(`/api/v1/nomad/nodes/${encodeURIComponent(nodeId)}`, { cluster });
+  }
+
+  async getNomadAllocations(cluster?: string): Promise<unknown> {
+    return this.getData('/api/v1/nomad/allocations', { cluster });
+  }
+
+  async getFailedNomadAllocations(cluster?: string): Promise<unknown> {
+    return this.getData('/api/v1/nomad/allocations/failed', { cluster });
+  }
+
+  async getNomadAllocation(allocationId: string, cluster?: string): Promise<unknown> {
+    return this.getData(
+      `/api/v1/nomad/allocations/${encodeURIComponent(allocationId)}`,
+      { cluster },
+    );
+  }
+
+  async getBlockedNomadEvaluations(cluster?: string): Promise<unknown> {
+    return this.getData('/api/v1/nomad/evaluations/blocked', { cluster });
+  }
+
+  async getMonitoringCurrent(query: QueryParams = {}): Promise<unknown> {
+    return this.getData('/api/v1/monitoring/current', query);
+  }
+
+  async getSslMonitoring(): Promise<unknown> {
+    return this.getData('/api/v1/monitoring/ssl');
+  }
+
+  private async getData(path: string, query: QueryParams = {}): Promise<unknown> {
+    const response = await this.get<SuccessEnvelope<unknown>>(path, query);
+    return response.data;
+  }
+
+  private async get<T>(path: string, query: QueryParams = {}): Promise<T> {
+    const url = new URL(`${this.config.baseUrl}${path}`);
+    for (const [key, value] of Object.entries(query)) {
+      if (value === undefined) continue;
+      url.searchParams.set(key, String(value));
+    }
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        accept: 'application/json',
+      },
+      signal: AbortSignal.timeout(6000),
+    });
+
+    return this.parseResponse<T>(response);
+  }
+
   private async post<T>(path: string, body: Record<string, unknown>): Promise<T> {
     const response = await fetch(`${this.config.baseUrl}${path}`, {
       method: 'POST',
@@ -112,6 +194,10 @@ export class MonitoringServiceClient {
       signal: AbortSignal.timeout(4000),
     });
 
+    return this.parseResponse<T>(response);
+  }
+
+  private async parseResponse<T>(response: Response): Promise<T> {
     const raw = await response.text();
     let parsed: unknown = {};
     if (raw) {
