@@ -4,6 +4,25 @@ All notable changes to Monitoring Telegram Bot Service are documented here.
 
 Versioning follows Semantic Versioning: `MAJOR.MINOR.PATCH`.
 
+## [1.4.2] - 2026-08-31
+
+### Changed
+- Standardize AI Quick Chat response presentation for every supported monitoring result: incident, server summary, node, allocation, driver, blocked evaluation, and SSL.
+- Improve Telegram rendering for labels, sections, bullets, numbered lists, stray Markdown markers, and unexpected Markdown table rows.
+- Keep monitoring answers compact and readable without exposing raw tool JSON.
+
+### Added
+- Show a `Loading...` reply immediately while AI Quick Chat is processing a question.
+- Replace the same loading message with the final Quick Chat result or error response when processing completes.
+
+
+## [1.4.1] - 2026-08-31
+
+### Fixed
+- Improve AI Quick Chat Telegram message formatting so Gemini Markdown markers are rendered cleanly instead of appearing as raw `#`, `**`, backticks, and separators.
+- Convert supported Quick Chat formatting to Telegram HTML for bold labels, inline code, bullets, numbered lists, and compact spacing.
+- Tighten Gemini response-format instructions to avoid Markdown headings, horizontal rules, tables, nested bullets, and raw HTML.
+
 ## [1.4.0] - 2026-08-31
 
 ### Added

@@ -21,8 +21,22 @@ Rules:
 - Never request or execute ACK, POSTPONE, manual pull, restart, stop, delete, update, or any other write action.
 - If the user asks outside the supported scope, state briefly that Quick Chat only supports incident, server, node, allocation, driver, eval blocked, and SSL monitoring.
 - If a tool reports an error, explain the monitoring data could not be retrieved and include the relevant error message without inventing a result.
-- Keep answers concise and operational. Include resource names/IDs and cluster/site when they are present and relevant.
-- Answer in the same language as the user. Do not mention internal tool names or implementation details.`;
+- Answer in the same language as the user. Do not mention internal tool names or implementation details.
+
+Telegram presentation contract for EVERY answer:
+- Start with one short **bold title** describing the result.
+- Add one blank line after the title.
+- Group related data into short **bold section names** when there is more than one group.
+- Use hyphen bullets for lists.
+- Write labels consistently as **Label:** value.
+- Put resource IDs, allocation IDs, node IDs, incident IDs, and resource keys inside backticks.
+- Include cluster, site, environment, state/status, and relevant timestamps when available and useful.
+- If issues exist, use a final **Isu Terdeteksi** / equivalent section and list only actual issues from tool data.
+- If no matching resource or issue exists, state that clearly instead of returning an empty-looking response.
+- For resource lists, keep each item compact and readable; do not dump raw JSON.
+- Never emit Markdown heading markers (#, ##, ###), horizontal rules (---), Markdown tables, code fences, nested bullets, or raw HTML.
+- Do not repeat the user's question.
+- Keep the result concise and operational without removing important monitoring facts.`;
 
 const QUICK_CHAT_TOOLS: GeminiFunctionTool[] = [
   {
@@ -187,8 +201,18 @@ export class QuickChatService {
     if (!message.from || !message.text?.trim()) return;
 
     const question = message.text.trim();
+    const chatId = String(message.chat.id);
+    let loadingMessageId: number | undefined;
 
     try {
+      const loadingMessage = await this.telegramClient.sendMessage({
+        chatId,
+        topicId: message.message_thread_id,
+        text: '<i>Loading...</i>',
+        replyToMessageId: message.message_id,
+      });
+      loadingMessageId = loadingMessage.message_id;
+
       const answer = await this.geminiClient.answerWithTools(
         question,
         SYSTEM_INSTRUCTION,
@@ -196,21 +220,47 @@ export class QuickChatService {
         (name, args) => this.executeTool(name, args),
       );
 
-      await this.telegramClient.sendMessage({
-        chatId: String(message.chat.id),
-        topicId: message.message_thread_id,
-        text: escapeHtml(limitTelegramText(answer)),
-        replyToMessageId: message.message_id,
-      });
+      const responseText = formatQuickChatTelegramHtml(limitTelegramText(answer));
+      await this.replaceLoadingMessage(
+        chatId,
+        message,
+        loadingMessageId,
+        responseText,
+      );
     } catch (error) {
       console.error('AI Quick Chat failed', error);
-      await this.telegramClient.sendMessage({
-        chatId: String(message.chat.id),
-        topicId: message.message_thread_id,
-        text: escapeHtml(quickChatErrorMessage(error)),
-        replyToMessageId: message.message_id,
-      });
+      const errorText = escapeHtml(quickChatErrorMessage(error));
+
+      await this.replaceLoadingMessage(
+        chatId,
+        message,
+        loadingMessageId,
+        errorText,
+      );
     }
+  }
+
+  private async replaceLoadingMessage(
+    chatId: string,
+    message: TelegramMessage,
+    loadingMessageId: number | undefined,
+    text: string,
+  ): Promise<void> {
+    if (loadingMessageId !== undefined) {
+      try {
+        await this.telegramClient.editMessageText(chatId, loadingMessageId, text);
+        return;
+      } catch (error) {
+        console.error('Failed to replace AI Quick Chat loading message', error);
+      }
+    }
+
+    await this.telegramClient.sendMessage({
+      chatId,
+      topicId: message.message_thread_id,
+      text,
+      replyToMessageId: message.message_id,
+    });
   }
 
   private async executeTool(name: string, args: Record<string, unknown>): Promise<unknown> {
@@ -366,6 +416,128 @@ function limitTelegramText(value: string): string {
   const text = value.trim();
   if (text.length <= maxLength) return text;
   return `${text.slice(0, maxLength - 25)}\n\n[response truncated]`;
+}
+
+
+function formatQuickChatTelegramHtml(value: string): string {
+  const lines = value.replaceAll('\r\n', '\n').split('\n');
+  const formatted: string[] = [];
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+
+    if (!line) {
+      pushBlankLine(formatted);
+      continue;
+    }
+
+    if (/^```/.test(line)) continue;
+    if (/^(?:-{3,}|_{3,}|\*{3,})$/.test(line)) continue;
+    if (isMarkdownTableSeparator(line)) continue;
+
+    const tableCells = parseMarkdownTableRow(line);
+    if (tableCells) {
+      formatted.push(formatTableCells(tableCells));
+      continue;
+    }
+
+    const heading = line.match(/^#{1,6}\s+(.+)$/);
+    if (heading) {
+      formatted.push(`<b>${formatHeadingMarkdown(heading[1] ?? '')}</b>`);
+      continue;
+    }
+
+    const bullet = line.match(/^[-*•]\s+(.+)$/);
+    if (bullet) {
+      formatted.push(`• ${formatStructuredContent(bullet[1] ?? '')}`);
+      continue;
+    }
+
+    const numbered = line.match(/^(\d+)[.)]\s+(.+)$/);
+    if (numbered) {
+      formatted.push(`${numbered[1] ?? ''}. ${formatStructuredContent(numbered[2] ?? '')}`);
+      continue;
+    }
+
+    formatted.push(formatStructuredContent(line));
+  }
+
+  while (formatted[formatted.length - 1] === '') formatted.pop();
+
+  return formatted.join('\n');
+}
+
+function formatStructuredContent(value: string): string {
+  const explicitMarkdown = /\*\*|__|`/.test(value);
+  if (explicitMarkdown) return formatInlineMarkdown(value);
+
+  const label = value.match(/^([^:]{1,40}):\s+(.+)$/);
+  if (label && isReadableLabel(label[1] ?? '')) {
+    return `<b>${escapeHtml((label[1] ?? '').trim())}:</b> ${formatInlineMarkdown(label[2] ?? '')}`;
+  }
+
+  return formatInlineMarkdown(value);
+}
+
+function formatHeadingMarkdown(value: string): string {
+  return formatInlineMarkdown(value.replaceAll('**', '').replaceAll('__', ''));
+}
+
+function formatInlineMarkdown(value: string): string {
+  let text = escapeHtml(value);
+
+  text = text.replace(/`([^`]+)`/g, '<code>$1</code>');
+  text = text.replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
+  text = text.replace(/__([^_]+)__/g, '<b>$1</b>');
+
+  return text
+    .replaceAll('**', '')
+    .replaceAll('__', '')
+    .replaceAll('`', '');
+}
+
+function pushBlankLine(lines: string[]): void {
+  if (lines.length > 0 && lines[lines.length - 1] !== '') {
+    lines.push('');
+  }
+}
+
+function isReadableLabel(value: string): boolean {
+  const label = value.trim();
+  if (!label) return false;
+  if (/^https?$/i.test(label)) return false;
+  return /^[\p{L}\p{N}][\p{L}\p{N} /_().&+-]*$/u.test(label);
+}
+
+function isMarkdownTableSeparator(line: string): boolean {
+  if (!line.startsWith('|') && !line.endsWith('|')) return false;
+  const cells = line
+    .replace(/^\|/, '')
+    .replace(/\|$/, '')
+    .split('|')
+    .map((cell) => cell.trim());
+
+  return cells.length > 1 && cells.every((cell) => /^:?-{3,}:?$/.test(cell));
+}
+
+function parseMarkdownTableRow(line: string): string[] | undefined {
+  if (!line.startsWith('|') && !line.endsWith('|')) return undefined;
+
+  const cells = line
+    .replace(/^\|/, '')
+    .replace(/\|$/, '')
+    .split('|')
+    .map((cell) => cell.trim())
+    .filter(Boolean);
+
+  return cells.length >= 2 ? cells : undefined;
+}
+
+function formatTableCells(cells: string[]): string {
+  const [label, ...values] = cells;
+  return `• <b>${formatHeadingMarkdown(label ?? '')}:</b> ${values
+    .map((value) => formatInlineMarkdown(value))
+    .join(' | ')}`;
 }
 
 function escapeHtml(value: string): string {

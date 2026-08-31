@@ -50,6 +50,19 @@ export class TelegramClient {
     });
   }
 
+  async editMessageText(
+    chatId: string,
+    messageId: number,
+    text: string,
+  ): Promise<void> {
+    await this.call<TelegramSentMessage>('editMessageText', {
+      chat_id: chatId,
+      message_id: messageId,
+      text,
+      parse_mode: 'HTML',
+    });
+  }
+
   async editMessageButtons(
     chatId: string,
     messageId: number,
