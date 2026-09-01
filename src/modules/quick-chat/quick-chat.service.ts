@@ -1,8 +1,8 @@
 import {
-  GeminiApiError,
-  GeminiClient,
-  type GeminiFunctionTool,
-} from '../../clients/gemini.client.js';
+  GroqApiError,
+  GroqClient,
+  type GroqFunctionTool,
+} from '../../clients/groq.client.js';
 import {
   MonitoringServiceClient,
   MonitoringServiceError,
@@ -38,7 +38,7 @@ Telegram presentation contract for EVERY answer:
 - Do not repeat the user's question.
 - Keep the result concise and operational without removing important monitoring facts.`;
 
-const QUICK_CHAT_TOOLS: GeminiFunctionTool[] = [
+const QUICK_CHAT_TOOLS: GroqFunctionTool[] = [
   {
     type: 'function',
     name: 'list_incidents',
@@ -192,7 +192,7 @@ const QUICK_CHAT_TOOLS: GeminiFunctionTool[] = [
 
 export class QuickChatService {
   constructor(
-    private readonly geminiClient: GeminiClient,
+    private readonly groqClient: GroqClient,
     private readonly monitoringServiceClient: MonitoringServiceClient,
     private readonly telegramClient: TelegramClient,
   ) {}
@@ -213,7 +213,7 @@ export class QuickChatService {
       });
       loadingMessageId = loadingMessage.message_id;
 
-      const answer = await this.geminiClient.answerWithTools(
+      const answer = await this.groqClient.answerWithTools(
         question,
         SYSTEM_INSTRUCTION,
         QUICK_CHAT_TOOLS,
@@ -397,15 +397,15 @@ function optionalInteger(
 }
 
 function quickChatErrorMessage(error: unknown): string {
-  if (error instanceof GeminiApiError) {
+  if (error instanceof GroqApiError) {
     if (error.statusCode === 429) {
-      return 'AI Quick Chat sedang mencapai batas penggunaan Gemini. Coba lagi nanti.';
+      return 'AI Quick Chat sedang mencapai batas penggunaan Groq. Coba lagi nanti.';
     }
     return `AI Quick Chat gagal memproses permintaan: ${error.message}`;
   }
 
   if (error instanceof Error && error.name === 'TimeoutError') {
-    return 'AI Quick Chat timeout saat menghubungi Gemini.';
+    return 'AI Quick Chat timeout saat menghubungi Groq.';
   }
 
   return 'AI Quick Chat gagal memproses permintaan.';

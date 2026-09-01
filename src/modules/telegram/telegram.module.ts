@@ -1,5 +1,5 @@
 import type { Pool } from 'mysql2/promise';
-import { GeminiClient } from '../../clients/gemini.client.js';
+import { GroqClient } from '../../clients/groq.client.js';
 import { MonitoringServiceClient } from '../../clients/monitoring-service.client.js';
 import type { AppConfig } from '../../config/config.js';
 import { IncidentStateRepository } from '../../repositories/incident-state.repository.js';
@@ -16,7 +16,7 @@ export function createTelegramModule(config: AppConfig, pool: Pool) {
   const telegramClient = new TelegramClient(config.telegram.botToken);
   const topicRouter = new TelegramTopicRouter(config.telegram.topics);
   const monitoringServiceClient = new MonitoringServiceClient(config.monitoringService);
-  const geminiClient = new GeminiClient(config.gemini);
+  const groqClient = new GroqClient(config.groq);
   const incidentStateRepository = new IncidentStateRepository(pool);
   const actionSessionRepository = new TelegramActionSessionRepository(pool);
 
@@ -40,7 +40,7 @@ export function createTelegramModule(config: AppConfig, pool: Pool) {
   );
 
   const quickChatService = new QuickChatService(
-    geminiClient,
+    groqClient,
     monitoringServiceClient,
     telegramClient,
   );

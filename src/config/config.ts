@@ -59,7 +59,7 @@ export interface AppConfig {
     username: string;
     password: string;
   };
-  gemini: {
+  groq: {
     apiKey: string;
     model: string;
   };
@@ -92,9 +92,9 @@ export function loadConfig(): AppConfig {
       username: required('MONITORING_AUTH_USERNAME'),
       password: required('MONITORING_AUTH_PASSWORD'),
     },
-    gemini: {
-      apiKey: required('GEMINI_API_KEY'),
-      model: optional('GEMINI_MODEL', 'gemini-3.7-flash'),
+    groq: {
+      apiKey: required('GROQ_API_KEY'),
+      model: optional('GROQ_MODEL', 'llama-3.1-8b-instant'),
     },
     mysql: {
       host: required('MYSQL_HOST'),
